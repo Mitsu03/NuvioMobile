@@ -222,6 +222,9 @@ object SimklTrackingProgressProvider : TrackingProgressProvider {
     override fun isHiddenFromProgress(contentId: String): Boolean =
         SimklSyncRepository.state.value.snapshot.isHiddenFromContinueWatching(contentId)
 
+    override fun isTrackedAsWatching(contentId: String): Boolean =
+        SimklSyncRepository.state.value.snapshot.isTrackedAsWatching(contentId)
+
     override fun normalizeParentContentId(parentContentId: String, videoId: String?): String {
         val snapshot = SimklSyncRepository.state.value.snapshot
         val resolvedId = snapshot.resolveCanonicalContentId(parentContentId)
