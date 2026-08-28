@@ -398,6 +398,16 @@ fun HomeScreen(
             ) {
                 return@mapNotNull null
             }
+            if (
+                !WatchProgressRepository.isTrackedAsWatching(cached.contentId) &&
+                !shouldSurfaceNextUpForUntrackedSeries(
+                    seedLastUpdatedEpochMs = cached.lastWatched,
+                    releasedIso = cached.released,
+                    nowEpochMs = WatchProgressClock.nowEpochMs(),
+                )
+            ) {
+                return@mapNotNull null
+            }
             val item = cached.toContinueWatchingItem() ?: return@mapNotNull null
             val sortTimestamp = if (item.isReleaseAlert) {
                 com.nuvio.app.features.watchprogress.parseReleaseDateToEpochMs(item.released) ?: cached.lastWatched
@@ -1302,6 +1312,38 @@ internal fun classifyHomeNextUpCandidateMetadata(
     )
 }
 
+/** Window either side of now in which a next episode still counts as news rather than backlog. */
+private const val NextUpNewReleaseWindowMs = 60L * 24 * 60 * 60 * 1000
+
+/**
+ * Whether a series the tracker no longer lists as watching may still offer a next episode.
+ *
+ * Next Up is seeded from watch history and never consults the list, so a show finished years ago
+ * keeps offering whatever the addon lists after the furthest episode watched. That is rarely a
+ * continuation: trackers model a franchise as one entry per season, cour or arc, so "finished"
+ * means finished that entry, while the addon's list runs to the end of the franchise.
+ *
+ * The one case worth keeping is news - a season that has just started, or the next episode of a
+ * show being followed weekly, which a tracker marks completed between airings. Both land inside
+ * [NextUpNewReleaseWindowMs] of now and after the seed was watched. Everything else is backlog the
+ * viewer has already decided against, and stays out of Continue Watching.
+ */
+internal fun shouldSurfaceNextUpForUntrackedSeries(
+    seedLastUpdatedEpochMs: Long,
+    releasedIso: String?,
+    nowEpochMs: Long,
+): Boolean {
+    val releaseEpochMs = com.nuvio.app.features.watchprogress.parseReleaseDateToEpochMs(releasedIso)
+        ?: return false
+    if (releaseEpochMs <= seedLastUpdatedEpochMs) return false
+    val distanceFromNowMs = if (releaseEpochMs >= nowEpochMs) {
+        releaseEpochMs - nowEpochMs
+    } else {
+        nowEpochMs - releaseEpochMs
+    }
+    return distanceFromNowMs <= NextUpNewReleaseWindowMs
+}
+
 private suspend fun resolveHomeNextUpCandidate(
     completedEntry: CompletedSeriesCandidate,
     watchProgressEntries: List<WatchProgressEntry>,
@@ -1369,6 +1411,16 @@ private suspend fun resolveHomeNextUpCandidate(
 
     val nextEpisode = meta.videoForSeriesAction(action)
     if (nextEpisode == null) {
+        return HomeNextUpResolutionAttempt.conclusiveNone()
+    }
+    if (
+        !WatchProgressRepository.isTrackedAsWatching(contentId) &&
+        !shouldSurfaceNextUpForUntrackedSeries(
+            seedLastUpdatedEpochMs = completedEntry.markedAtEpochMs,
+            releasedIso = nextEpisode.released,
+            nowEpochMs = WatchProgressClock.nowEpochMs(),
+        )
+    ) {
         return HomeNextUpResolutionAttempt.conclusiveNone()
     }
     val metadataDecision = classifyHomeNextUpCandidateMetadata(

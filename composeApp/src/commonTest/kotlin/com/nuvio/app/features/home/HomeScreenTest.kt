@@ -29,6 +29,65 @@ import kotlin.test.assertTrue
 class HomeScreenTest {
 
     @Test
+    fun `finished series does not offer an episode that aired long ago`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val finishedCour1 = requireNotNull(parseReleaseDateToEpochMs("2022-08-22T00:00:00Z"))
+
+        // Simkl's entry is one cour and is completed; the addon lists the whole run, so Next Up
+        // offers cour 2, which aired four years ago. That is backlog, not a continuation.
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = finishedCour1,
+                releasedIso = "2022-10-01T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun `finished series still offers an episode that just aired or is about to`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val caughtUp = requireNotNull(parseReleaseDateToEpochMs("2026-08-24T00:00:00Z"))
+
+        // Followed weekly and caught up, so the tracker reads completed between airings.
+        assertTrue(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = caughtUp,
+                releasedIso = "2026-08-26T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+        assertTrue(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = requireNotNull(parseReleaseDateToEpochMs("2024-01-01T00:00:00Z")),
+                releasedIso = "2026-08-04T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun `finished series does not offer an episode older than the seed or without a date`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val markedAt = requireNotNull(parseReleaseDateToEpochMs("2026-08-20T00:00:00Z"))
+
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = markedAt,
+                releasedIso = "2009-06-26T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = markedAt,
+                releasedIso = null,
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
     fun `home trakt continue watching candidate limits match TV`() {
         assertEquals(300, HomeContinueWatchingMaxRecentProgressItems)
         assertEquals(32, HomeNextUpInitialResolutionLimit)
