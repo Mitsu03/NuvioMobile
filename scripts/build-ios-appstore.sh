@@ -69,7 +69,6 @@ fi
     -archivePath "${archive_path}" \
     "${authentication[@]}" \
     CODE_SIGN_STYLE=Automatic \
-    CODE_SIGN_IDENTITY="Apple Distribution" \
     DEVELOPMENT_TEAM="${IOS_TEAM_ID}" \
     archive
 
