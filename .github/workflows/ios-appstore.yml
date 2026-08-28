@@ -82,9 +82,10 @@ jobs:
           printf '%s' "${RELEASE_PROPERTIES_BASE64}" | base64 --decode > local.properties
           sed -i '' -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
 
+          # Trakt is deliberately absent: build.gradle.kts defaults its constants to ""
+          # and the app treats an unconfigured tracker as simply unavailable, so a build
+          # without Trakt credentials is valid -- Trakt sign-in just will not work in it.
           required_properties=(
-            TRAKT_CLIENT_ID
-            TRAKT_CLIENT_SECRET
             SIMKL_CLIENT_ID
           )
           for property_name in "${required_properties[@]}"; do
