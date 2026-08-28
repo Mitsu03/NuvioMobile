@@ -1,6 +1,6 @@
 #include? "Version.xcconfig"
 
-TEAM_ID=
+TEAM_ID=S8KM3NMGR4
 
 PRODUCT_NAME=Nuvio
 PRODUCT_BUNDLE_IDENTIFIER=com.nuvio.app.Nuvio$(TEAM_ID)
