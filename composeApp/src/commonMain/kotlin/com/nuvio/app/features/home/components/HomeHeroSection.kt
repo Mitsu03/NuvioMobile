@@ -133,7 +133,11 @@ fun HomeHeroSection(
         )
         val heroWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
         val heroHeightPx = with(LocalDensity.current) { layout.heroHeight.toPx() }
-        val scrollOffsetPx by remember(listState, heroHeightPx) {
+        // Lido dentro do `graphicsLayer` abaixo, e nao aqui: `firstVisibleItemScrollOffset`
+        // muda a cada pixel de scroll, e uma leitura de estado durante a composicao
+        // recompunha a seccao inteira -- incluindo as `AsyncImage` empilhadas -- a cada
+        // frame. Dentro do bloco de desenho a invalidacao fica confinada a fase de draw.
+        val scrollOffsetPx = remember(listState, heroHeightPx) {
             derivedStateOf {
                 when {
                     listState == null -> 0f
@@ -142,8 +146,6 @@ fun HomeHeroSection(
                 }
             }
         }
-        val heroScrollScale = heroBackgroundScrollScale(scrollOffsetPx)
-        val heroScrollTranslationY = heroBackgroundScrollTranslationY(scrollOffsetPx)
         val currentPage = pagerState.currentPage.coerceIn(items.indices)
         val visiblePages = listOf(
             currentPage,
@@ -201,11 +203,13 @@ fun HomeHeroSection(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
+                                    val offset = scrollOffsetPx.value
+                                    val scrollScale = heroBackgroundScrollScale(offset)
                                     alpha = layer.visibility
                                     translationX = -layer.offset * heroWidthPx * HERO_BACKGROUND_PARALLAX
-                                    translationY = heroScrollTranslationY
-                                    scaleX = HERO_BACKGROUND_SCALE * heroScrollScale
-                                    scaleY = HERO_BACKGROUND_SCALE * heroScrollScale
+                                    translationY = heroBackgroundScrollTranslationY(offset)
+                                    scaleX = HERO_BACKGROUND_SCALE * scrollScale
+                                    scaleY = HERO_BACKGROUND_SCALE * scrollScale
                                 },
                             alignment = if (layout.isTablet) Alignment.TopCenter else Alignment.Center,
                             contentScale = ContentScale.Crop,

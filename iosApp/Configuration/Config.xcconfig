@@ -4,3 +4,8 @@ TEAM_ID=
 
 PRODUCT_NAME=Nuvio
 PRODUCT_BUNDLE_IDENTIFIER=com.nuvio.app.Nuvio$(TEAM_ID)
+// O Release não define nível de otimização em lado nenhum do projeto, pelo que
+// o Xcode cai no default `-Onone` e compila o código Swift sem otimizar. O Debug
+// define `-Onone` explicitamente no pbxproj e continua a ganhar a este ficheiro.
+SWIFT_OPTIMIZATION_LEVEL = -O
+GCC_OPTIMIZATION_LEVEL = s
