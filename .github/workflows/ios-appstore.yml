@@ -1,0 +1,169 @@
+name: Upload to App Store Connect
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: Build number. Must be higher than the last one uploaded for this marketing version.
+        required: true
+        type: string
+      submit:
+        description: Send the build to App Store Connect. Leave off to build and sign without uploading.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-appstore-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Build, sign and upload
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      GRADLE_OPTS: -Dfile.encoding=UTF-8
+      KOTLIN_DAEMON_JVMARGS: -Xmx2048M
+      NUVIO_GRADLE_JVMARGS: -Xmx4608M -Dfile.encoding=UTF-8 -XX:MaxMetaspaceSize=768M
+      NUVIO_KOTLIN_NATIVE_JVMARGS: -Xmx4608M
+      RELEASE_PROPERTIES_BASE64: ${{ secrets.NUVIO_LOCAL_PROPERTIES_BASE64 }}
+      IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+      IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Cache Kotlin Native
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Verify configuration
+        run: |
+          missing=()
+          [[ -n "${IOS_TEAM_ID}" ]] || missing+=(IOS_TEAM_ID)
+          [[ -n "${IOS_BUNDLE_ID}" ]] || missing+=(IOS_BUNDLE_ID)
+          if (( ${#missing[@]} )); then
+            echo "Missing repository variables: ${missing[*]}" >&2
+            echo "Set them under Settings > Secrets and variables > Actions > Variables." >&2
+            exit 1
+          fi
+
+          if [[ ! '${{ inputs.build_number }}' =~ ^[0-9]+$ ]]; then
+            echo "Build number must be a positive integer." >&2
+            exit 1
+          fi
+
+      - name: Configure runtime properties
+        run: |
+          if [[ -z "${RELEASE_PROPERTIES_BASE64}" ]]; then
+            echo "NUVIO_LOCAL_PROPERTIES_BASE64 is not set. Without it every API key compiles in empty." >&2
+            exit 1
+          fi
+
+          printf '%s' "${RELEASE_PROPERTIES_BASE64}" | base64 --decode > local.properties
+          sed -i '' -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
+
+          required_properties=(
+            TRAKT_CLIENT_ID
+            TRAKT_CLIENT_SECRET
+            SIMKL_CLIENT_ID
+          )
+          for property_name in "${required_properties[@]}"; do
+            if ! grep -Eq "^${property_name}=.+" local.properties; then
+              echo "Missing required property: ${property_name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Stamp build number
+        run: |
+          sed -i '' -E "s/^CURRENT_PROJECT_VERSION=.*/CURRENT_PROJECT_VERSION=${{ inputs.build_number }}/" \
+            iosApp/Configuration/Version.xcconfig
+          cat iosApp/Configuration/Version.xcconfig
+
+      - name: Prepare iOS dependencies
+        run: ./scripts/prepare-ios-dependencies.sh
+
+      - name: Build and sign
+        env:
+          ASC_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          for required in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+            if [[ -z "${!required}" ]]; then
+              echo "Missing secret: APPSTORE_${required#ASC_}" >&2
+              exit 1
+            fi
+          done
+
+          # xcodebuild reads the key from disk, so it has to land somewhere. RUNNER_TEMP is
+          # wiped with the runner and is not the repo, so it never risks being committed.
+          export ASC_KEY_PATH="${RUNNER_TEMP}/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "${ASC_PRIVATE_KEY}" > "${ASC_KEY_PATH}"
+          chmod 600 "${ASC_KEY_PATH}"
+
+          ./scripts/build-ios-appstore.sh
+
+      - name: Upload to App Store Connect
+        if: ${{ inputs.submit }}
+        env:
+          ASC_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          # altool looks the key up by id in this directory rather than taking a path.
+          key_dir="${HOME}/.appstoreconnect/private_keys"
+          mkdir -p "${key_dir}"
+          printf '%s' "${ASC_PRIVATE_KEY}" > "${key_dir}/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "${key_dir}/AuthKey_${ASC_KEY_ID}.p8"
+
+          ipa_path="$(find build/ios-appstore -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          xcrun altool --upload-app \
+            --file "${ipa_path}" \
+            --type ios \
+            --apiKey "${ASC_KEY_ID}" \
+            --apiIssuer "${ASC_ISSUER_ID}"
+
+      - name: Summarize
+        if: always()
+        run: |
+          ipa_path="$(find build/ios-appstore -maxdepth 1 -type f -name '*.ipa' -print -quit 2>/dev/null || true)"
+          {
+            echo "## App Store build"
+            echo
+            if [[ -n "${ipa_path}" ]]; then
+              echo "- File: $(basename "${ipa_path}")"
+              echo "- Size: $(du -h "${ipa_path}" | cut -f1)"
+              echo "- SHA-256: $(shasum -a 256 "${ipa_path}" | awk '{print $1}')"
+            else
+              echo "- No IPA was produced."
+            fi
+            echo "- Build number: ${{ inputs.build_number }}"
+            echo "- Uploaded to Apple: ${{ inputs.submit }}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -rf "${HOME}/.appstoreconnect/private_keys" "${RUNNER_TEMP}"/AuthKey_*.p8
+          security delete-keychain "${HOME}/Library/Keychains/fastlane_tmp_keychain-db" 2>/dev/null || true
