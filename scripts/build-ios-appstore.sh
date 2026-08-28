@@ -47,7 +47,10 @@ authentication=(
 
 build_environment=(
     env
-    NUVIO_IOS_DISTRIBUTION=full
+    # 'full' is the sideload flavour: it compiles src/iosFull, whose PluginCrypto calls
+    # CCCryptorGCMEncrypt/Decrypt/Final -- private CommonCrypto symbols that App Store
+    # Connect rejects with error 90338. 'appstore' selects src/iosAppStore instead.
+    NUVIO_IOS_DISTRIBUTION=appstore
     CLANG_MODULE_CACHE_PATH="${derived_data}/ModuleCache.noindex"
     SWIFTPM_MODULECACHE_OVERRIDE="${derived_data}/SwiftPMModuleCache.noindex"
 )
@@ -146,5 +149,18 @@ case "${authority}" in
         ;;
 esac
 echo "Signed by: ${authority}"
+
+# App Store Connect rejects private CommonCrypto symbols with error 90338, and it does so
+# during processing -- after the upload has "succeeded" and the build number is spent.
+# These arrive by compiling the wrong distribution flavour, so check the binary itself
+# rather than trusting NUVIO_IOS_DISTRIBUTION to have been set correctly.
+app_binary="${app_dir}/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${app_dir}/Info.plist")"
+private_symbols="$(nm -u "${app_binary}" 2>/dev/null | grep -E '_CCCryptorGCM' | sort -u || true)"
+if [[ -n "${private_symbols}" ]]; then
+    echo "Binary references private CommonCrypto symbols:" >&2
+    printf '  %s\n' ${private_symbols} >&2
+    echo "This is the 'full' flavour leaking in; App Store builds need NUVIO_IOS_DISTRIBUTION=appstore." >&2
+    exit 1
+fi
 
 echo "Created ${ipa_path}"
