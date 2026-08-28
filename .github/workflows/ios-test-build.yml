@@ -60,10 +60,26 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
 
       - name: Configure runtime properties
-        if: env.RELEASE_PROPERTIES_BASE64 != ''
         run: |
+          if [[ -z "${RELEASE_PROPERTIES_BASE64}" ]]; then
+            echo "NUVIO_LOCAL_PROPERTIES_BASE64 is not set. Without it every API key compiles in empty." >&2
+            exit 1
+          fi
+
           printf '%s' "${RELEASE_PROPERTIES_BASE64}" | base64 --decode > local.properties
           sed -i '' -E '/^[[:space:]]*(sdk\.dir|NUVIO_RELEASE_STORE_FILE)[[:space:]]*=/d' local.properties
+
+          required_properties=(
+            TRAKT_CLIENT_ID
+            TRAKT_CLIENT_SECRET
+            SIMKL_CLIENT_ID
+          )
+          for property_name in "${required_properties[@]}"; do
+            if ! grep -Eq "^${property_name}=.+" local.properties; then
+              echo "Missing required property: ${property_name}" >&2
+              exit 1
+            fi
+          done
 
       - name: Prepare iOS dependencies
         run: ./scripts/prepare-ios-dependencies.sh
