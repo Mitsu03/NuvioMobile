@@ -69,6 +69,7 @@ fi
     -archivePath "${archive_path}" \
     "${authentication[@]}" \
     CODE_SIGN_STYLE=Automatic \
+    CODE_SIGN_IDENTITY="Apple Distribution" \
     DEVELOPMENT_TEAM="${IOS_TEAM_ID}" \
     archive
 
@@ -123,10 +124,28 @@ if [[ -z "${ipa_path}" ]]; then
     exit 1
 fi
 
-# An unsigned export only surfaces as a rejection mail hours later, so catch it here.
-if ! unzip -l "${ipa_path}" | grep -q '_CodeSignature'; then
-    echo "Exported IPA is not signed." >&2
+# Checking merely that _CodeSignature exists is not enough: the project pins
+# CODE_SIGN_IDENTITY to "Apple Development" at target level, and a development-signed
+# IPA archives, exports and zips without complaint. Apple only rejects it after upload,
+# by which point the build number is spent and cannot be reused.
+inspect_dir="$(mktemp -d "${TMPDIR:-/tmp}/nuvio-ipa-verify.XXXXXX")"
+trap 'rm -rf "${inspect_dir}"' EXIT
+unzip -q "${ipa_path}" -d "${inspect_dir}"
+app_dir="$(find "${inspect_dir}/Payload" -maxdepth 1 -name '*.app' -print -quit)"
+if [[ -z "${app_dir}" ]]; then
+    echo "Exported IPA has no .app in Payload." >&2
     exit 1
 fi
+
+authority="$(codesign -dvv "${app_dir}" 2>&1 | sed -nE 's/^Authority=(.*)$/\1/p' | head -n 1)"
+case "${authority}" in
+    "Apple Distribution"*) ;;
+    *)
+        echo "Exported IPA is signed by '${authority:-nothing}', not Apple Distribution." >&2
+        echo "App Store Connect rejects anything else; refusing to hand it a bad build." >&2
+        exit 1
+        ;;
+esac
+echo "Signed by: ${authority}"
 
 echo "Created ${ipa_path}"
