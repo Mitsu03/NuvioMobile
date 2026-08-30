@@ -158,31 +158,13 @@ CCCryptorStatus CCCryptorCreateWithMode(
     CCCryptorRef *cryptorRef
 );
 
-CCCryptorStatus CCCryptorGCMAddAAD(
-    CCCryptorRef cryptorRef,
-    const void *aData,
-    size_t aDataLen
-);
-
-CCCryptorStatus CCCryptorGCMEncrypt(
-    CCCryptorRef cryptorRef,
-    const void *dataIn,
-    size_t dataInLength,
-    void *dataOut
-);
-
-CCCryptorStatus CCCryptorGCMDecrypt(
-    CCCryptorRef cryptorRef,
-    const void *dataIn,
-    size_t dataInLength,
-    void *dataOut
-);
-
-CCCryptorStatus CCCryptorGCMFinal(
-    CCCryptorRef cryptorRef,
-    void *tag,
-    size_t *tagLength
-);
+/*
+ * CCCryptorGCMAddAAD, CCCryptorGCMEncrypt, CCCryptorGCMDecrypt and CCCryptorGCMFinal are
+ * deliberately absent. They are CommonCrypto SPI, not public API, and App Store Connect rejects
+ * any binary that references them with error 90338 -- during processing, after the upload has
+ * already succeeded and the build number has been spent. AES-GCM is assembled from the public
+ * CCCrypt in PluginCrypto.ios.kt instead. Do not re-declare them here.
+ */
 
 CCCryptorStatus CCCryptorRelease(
     CCCryptorRef cryptorRef

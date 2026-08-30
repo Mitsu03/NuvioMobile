@@ -114,80 +114,8 @@ internal fun pluginAesEncrypt(
         require(iv.isNotEmpty()) { "AES mode $mode requires an IV" }
     }
 
-    val isGcm = mode.uppercase().contains("GCM")
-    if (isGcm) {
-        var encryptedData: ByteArray? = null
-        memScoped {
-            val cryptorRefVar = alloc<com.nuvio.app.features.plugins.cryptointerop.CCCryptorRefVar>()
-            
-            key.usePinned { pinnedKey ->
-                iv.usePinned { pinnedIv ->
-                    data.usePinned { pinnedData ->
-                        val keyPtr = if (key.isNotEmpty()) pinnedKey.addressOf(0) else null
-                        val ivPtr = if (iv.isNotEmpty()) pinnedIv.addressOf(0) else null
-                        val dataPtr = if (data.isNotEmpty()) pinnedData.addressOf(0) else null
-                        
-                        val status = CCCryptorCreateWithMode(
-                            op = kCCEncrypt,
-                            mode = kCCModeGCM,
-                            alg = kCCAlgorithmAES,
-                            padding = ccNoPadding,
-                            iv = ivPtr,
-                            key = keyPtr,
-                            keyLength = key.size.toULong(),
-                            tweak = null,
-                            tweakLength = 0UL,
-                            numRounds = 0,
-                            options = 0U,
-                            cryptorRef = cryptorRefVar.ptr
-                        )
-                        
-                        if (status != kCCSuccess) {
-                            error("CCCryptorCreateWithMode failed with status: $status")
-                        }
-                        
-                        val cryptorRef = cryptorRefVar.value ?: error("Cryptor reference was null")
-                        
-                        try {
-                            val cipherTextBytes = ByteArray(data.size)
-                            cipherTextBytes.usePinned { pinnedCipher ->
-                                val cipherPtr = if (data.isNotEmpty()) pinnedCipher.addressOf(0) else null
-                                val cryptStatus = CCCryptorGCMEncrypt(
-                                    cryptorRef = cryptorRef,
-                                    dataIn = dataPtr,
-                                    dataInLength = data.size.toULong(),
-                                    dataOut = cipherPtr
-                                )
-                                if (cryptStatus != kCCSuccess) {
-                                    error("CCCryptorGCMEncrypt failed with status: $cryptStatus")
-                                }
-                            }
-                            
-                            val tagBytes = ByteArray(16)
-                            val tagLengthVar = alloc<platform.posix.size_tVar>()
-                            tagLengthVar.value = 16UL
-                            
-                            tagBytes.usePinned { pinnedTag ->
-                                val tagPtr = pinnedTag.addressOf(0)
-                                val finalStatus = CCCryptorGCMFinal(
-                                    cryptorRef = cryptorRef,
-                                    tag = tagPtr,
-                                    tagLength = tagLengthVar.ptr
-                                )
-                                if (finalStatus != kCCSuccess) {
-                                    error("CCCryptorGCMFinal failed with status: $finalStatus")
-                                }
-                            }
-                            
-                            encryptedData = cipherTextBytes + tagBytes
-                        } finally {
-                            CCCryptorRelease(cryptorRef)
-                        }
-                    }
-                }
-            }
-        }
-        return encryptedData ?: ByteArray(0)
+    if (mode.uppercase().contains("GCM")) {
+        return aesGcmSeal(key = key, iv = iv, plaintext = data)
     }
     
     val isEcb = mode.uppercase().contains("ECB")
@@ -253,85 +181,15 @@ internal fun pluginAesDecrypt(
         require(iv.isNotEmpty()) { "AES mode $mode requires an IV" }
     }
 
-    val isGcm = mode.uppercase().contains("GCM")
-    if (isGcm) {
-        require(data.size >= 16) { "Data too short for GCM decryption" }
-        val ciphertextLen = data.size - 16
-        val ciphertext = data.copyOfRange(0, ciphertextLen)
-        val tagBytes = data.copyOfRange(ciphertextLen, data.size)
-        
-        var decryptedData: ByteArray? = null
-        
-        memScoped {
-            val cryptorRefVar = alloc<com.nuvio.app.features.plugins.cryptointerop.CCCryptorRefVar>()
-            
-            key.usePinned { pinnedKey ->
-                iv.usePinned { pinnedIv ->
-                    ciphertext.usePinned { pinnedCipher ->
-                        tagBytes.usePinned { pinnedTag ->
-                            val keyPtr = if (key.isNotEmpty()) pinnedKey.addressOf(0) else null
-                            val ivPtr = if (iv.isNotEmpty()) pinnedIv.addressOf(0) else null
-                            val cipherPtr = if (ciphertext.isNotEmpty()) pinnedCipher.addressOf(0) else null
-                            val tagPtr = pinnedTag.addressOf(0)
-                            
-                            val status = CCCryptorCreateWithMode(
-                                op = kCCDecrypt,
-                                mode = kCCModeGCM,
-                                alg = kCCAlgorithmAES,
-                                padding = ccNoPadding,
-                                iv = ivPtr,
-                                key = keyPtr,
-                                keyLength = key.size.toULong(),
-                                tweak = null,
-                                tweakLength = 0UL,
-                                numRounds = 0,
-                                options = 0U,
-                                cryptorRef = cryptorRefVar.ptr
-                            )
-                            
-                            if (status != kCCSuccess) {
-                                error("CCCryptorCreateWithMode failed with status: $status")
-                            }
-                            
-                            val cryptorRef = cryptorRefVar.value ?: error("Cryptor reference was null")
-                            
-                            try {
-                                val plainTextBytes = ByteArray(ciphertextLen)
-                                plainTextBytes.usePinned { pinnedPlain ->
-                                    val plainPtr = if (ciphertextLen > 0) pinnedPlain.addressOf(0) else null
-                                    val cryptStatus = CCCryptorGCMDecrypt(
-                                        cryptorRef = cryptorRef,
-                                        dataIn = cipherPtr,
-                                        dataInLength = ciphertextLen.toULong(),
-                                        dataOut = plainPtr
-                                    )
-                                    if (cryptStatus != kCCSuccess) {
-                                        error("CCCryptorGCMDecrypt failed with status: $cryptStatus")
-                                    }
-                                }
-                                
-                                val tagLengthVar = alloc<platform.posix.size_tVar>()
-                                tagLengthVar.value = 16UL
-                                
-                                val finalStatus = CCCryptorGCMFinal(
-                                    cryptorRef = cryptorRef,
-                                    tag = tagPtr,
-                                    tagLength = tagLengthVar.ptr
-                                )
-                                if (finalStatus != kCCSuccess) {
-                                    error("CCCryptorGCMFinal failed with status: $finalStatus (tag verification failed)")
-                                }
-                                
-                                decryptedData = plainTextBytes
-                            } finally {
-                                CCCryptorRelease(cryptorRef)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return decryptedData ?: ByteArray(0)
+    if (mode.uppercase().contains("GCM")) {
+        require(data.size >= gcmTagSize) { "Data too short for GCM decryption" }
+        val ciphertextLength = data.size - gcmTagSize
+        return aesGcmOpen(
+            key = key,
+            iv = iv,
+            ciphertext = data.copyOfRange(0, ciphertextLength),
+            tag = data.copyOfRange(ciphertextLength, data.size),
+        )
     }
     
     val isEcb = mode.uppercase().contains("ECB")
@@ -549,4 +407,252 @@ internal fun pluginHexToByteArray(hex: String): ByteArray {
 
 internal fun pluginHexToUtf8(hex: String): String {
     return pluginHexToByteArray(hex).decodeToString()
+}
+
+// AES-GCM, built from public CommonCrypto only.
+//
+// CommonCrypto does expose GCM through CCCryptorCreateWithMode(kCCModeGCM, ...), but driving it
+// needs CCCryptorGCMEncrypt/Decrypt/Final, which are SPI. App Store Connect rejects any binary
+// referencing them with error 90338, and it does so during processing -- after the upload has
+// "succeeded" and the build number is spent. So GCM is assembled here instead: the counter mode
+// runs through the public CCCrypt in ECB, and GHASH is computed in Kotlin.
+//
+// The wire format is unchanged: ciphertext followed by a 16-byte tag, no AAD.
+
+private const val gcmBlockSize = 16
+private const val gcmTagSize = 16
+
+// R = 0xE1000000_00000000, the GF(2^128) reduction polynomial from NIST SP 800-38D.
+private const val gcmReductionPolynomial: Long = -0x1F00000000000000L
+
+private fun aesGcmSeal(key: ByteArray, iv: ByteArray, plaintext: ByteArray): ByteArray {
+    val hashSubkey = aesEcbEncryptBlocks(key, ByteArray(gcmBlockSize))
+    val initialCounter = gcmInitialCounter(hashSubkey, iv)
+    val ciphertext = aesGcmXorKeystream(key, initialCounter, plaintext)
+    return ciphertext + aesGcmTag(key, hashSubkey, initialCounter, ciphertext)
+}
+
+private fun aesGcmOpen(
+    key: ByteArray,
+    iv: ByteArray,
+    ciphertext: ByteArray,
+    tag: ByteArray,
+): ByteArray {
+    val hashSubkey = aesEcbEncryptBlocks(key, ByteArray(gcmBlockSize))
+    val initialCounter = gcmInitialCounter(hashSubkey, iv)
+    val expected = aesGcmTag(key, hashSubkey, initialCounter, ciphertext)
+
+    // Compared without early exit: a length-dependent loop here would leak the tag one byte at a
+    // time to a caller that can retry.
+    var difference = 0
+    for (index in 0 until gcmTagSize) {
+        difference = difference or (expected[index].toInt() xor tag[index].toInt())
+    }
+    if (difference != 0) error("GCM tag verification failed")
+
+    return aesGcmXorKeystream(key, initialCounter, ciphertext)
+}
+
+private fun aesGcmTag(
+    key: ByteArray,
+    hashSubkey: ByteArray,
+    initialCounter: ByteArray,
+    ciphertext: ByteArray,
+): ByteArray {
+    val ghash = GHash(hashSubkey)
+    ghash.update(ciphertext)
+    ghash.updateLengthBlock(aadLengthBits = 0L, cipherLengthBits = ciphertext.size.toLong() * 8)
+    val hashed = ghash.digest()
+    val mask = aesEcbEncryptBlocks(key, initialCounter)
+    return ByteArray(gcmTagSize) { index ->
+        (hashed[index].toInt() xor mask[index].toInt()).toByte()
+    }
+}
+
+/**
+ * J0. A 12-byte IV -- the common case -- is used directly with a counter of 1; any other length is
+ * folded through GHASH, as the spec requires.
+ */
+private fun gcmInitialCounter(hashSubkey: ByteArray, iv: ByteArray): ByteArray {
+    if (iv.size == 12) {
+        val counter = ByteArray(gcmBlockSize)
+        iv.copyInto(counter)
+        counter[gcmBlockSize - 1] = 1
+        return counter
+    }
+    val ghash = GHash(hashSubkey)
+    ghash.update(iv)
+    ghash.updateLengthBlock(aadLengthBits = 0L, cipherLengthBits = iv.size.toLong() * 8)
+    return ghash.digest()
+}
+
+/**
+ * GCM's counter mode. AES-ECB maps each 16-byte block independently, so a run of counter blocks
+ * encrypted in one call yields exactly the concatenated keystream -- which keeps this to one
+ * CCCrypt call per chunk rather than one per block.
+ */
+private fun aesGcmXorKeystream(key: ByteArray, initialCounter: ByteArray, input: ByteArray): ByteArray {
+    if (input.isEmpty()) return ByteArray(0)
+
+    val output = ByteArray(input.size)
+    val counter = initialCounter.copyOf()
+    val blocksPerChunk = 4096 // 64 KiB of counter blocks in flight at a time.
+    var offset = 0
+
+    while (offset < input.size) {
+        val remaining = input.size - offset
+        val blocks = minOf(blocksPerChunk, (remaining + gcmBlockSize - 1) / gcmBlockSize)
+        val counters = ByteArray(blocks * gcmBlockSize)
+        for (block in 0 until blocks) {
+            incrementGcmCounter(counter)
+            counter.copyInto(counters, block * gcmBlockSize)
+        }
+
+        val keystream = aesEcbEncryptBlocks(key, counters)
+        val chunk = minOf(remaining, blocks * gcmBlockSize)
+        for (index in 0 until chunk) {
+            output[offset + index] = (input[offset + index].toInt() xor keystream[index].toInt()).toByte()
+        }
+        offset += chunk
+    }
+
+    return output
+}
+
+/** inc32: only the trailing 32 bits advance, wrapping within themselves. */
+private fun incrementGcmCounter(counter: ByteArray) {
+    for (index in gcmBlockSize - 1 downTo gcmBlockSize - 4) {
+        val next = ((counter[index].toInt() and 0xFF) + 1) and 0xFF
+        counter[index] = next.toByte()
+        if (next != 0) return
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun aesEcbEncryptBlocks(key: ByteArray, blocks: ByteArray): ByteArray {
+    require(blocks.size % gcmBlockSize == 0) {
+        "AES-ECB input must be a whole number of blocks, got ${blocks.size}"
+    }
+    if (blocks.isEmpty()) return ByteArray(0)
+
+    val output = ByteArray(blocks.size)
+    memScoped {
+        val dataOutMoved = alloc<platform.posix.size_tVar>()
+        key.usePinned { pinnedKey ->
+            blocks.usePinned { pinnedIn ->
+                output.usePinned { pinnedOut ->
+                    val status = CCCrypt(
+                        op = kCCEncrypt,
+                        alg = kCCAlgorithmAES,
+                        options = kCCOptionECBMode,
+                        key = pinnedKey.addressOf(0),
+                        keyLength = key.size.toULong(),
+                        iv = null,
+                        dataIn = pinnedIn.addressOf(0),
+                        dataInLength = blocks.size.toULong(),
+                        dataOut = pinnedOut.addressOf(0),
+                        dataOutAvailable = output.size.toULong(),
+                        dataOutMoved = dataOutMoved.ptr,
+                    )
+                    if (status != kCCSuccess) {
+                        error("CCCrypt ECB failed with status: $status")
+                    }
+                    if (dataOutMoved.value.toInt() != output.size) {
+                        error("CCCrypt ECB wrote ${dataOutMoved.value} bytes, expected ${output.size}")
+                    }
+                }
+            }
+        }
+    }
+    return output
+}
+
+/** GHASH over GF(2^128), per NIST SP 800-38D. State and subkey are held as two big-endian longs. */
+private class GHash(hashSubkey: ByteArray) {
+    private val subkeyHigh: Long = hashSubkey.bigEndianLongAt(0)
+    private val subkeyLow: Long = hashSubkey.bigEndianLongAt(8)
+    private var stateHigh: Long = 0L
+    private var stateLow: Long = 0L
+
+    /** Absorbs data a block at a time, zero-padding a short final block. */
+    fun update(data: ByteArray) {
+        var offset = 0
+        while (offset < data.size) {
+            if (data.size - offset >= gcmBlockSize) {
+                stateHigh = stateHigh xor data.bigEndianLongAt(offset)
+                stateLow = stateLow xor data.bigEndianLongAt(offset + 8)
+            } else {
+                val padded = ByteArray(gcmBlockSize)
+                data.copyInto(padded, 0, offset, data.size)
+                stateHigh = stateHigh xor padded.bigEndianLongAt(0)
+                stateLow = stateLow xor padded.bigEndianLongAt(8)
+            }
+            multiplyBySubkey()
+            offset += gcmBlockSize
+        }
+    }
+
+    /** The closing block: the two lengths, in bits, as a pair of 64-bit big-endian values. */
+    fun updateLengthBlock(aadLengthBits: Long, cipherLengthBits: Long) {
+        stateHigh = stateHigh xor aadLengthBits
+        stateLow = stateLow xor cipherLengthBits
+        multiplyBySubkey()
+    }
+
+    fun digest(): ByteArray {
+        val out = ByteArray(gcmBlockSize)
+        out.putBigEndianLong(0, stateHigh)
+        out.putBigEndianLong(8, stateLow)
+        return out
+    }
+
+    /** Carry-less multiply of the state by the hash subkey, most significant bit first. */
+    private fun multiplyBySubkey() {
+        var resultHigh = 0L
+        var resultLow = 0L
+        var runningHigh = subkeyHigh
+        var runningLow = subkeyLow
+        var operandHigh = stateHigh
+        var operandLow = stateLow
+
+        for (bit in 0 until 64) {
+            if (operandHigh < 0) { // top bit set
+                resultHigh = resultHigh xor runningHigh
+                resultLow = resultLow xor runningLow
+            }
+            operandHigh = operandHigh shl 1
+            val carry = runningLow and 1L
+            runningLow = (runningLow ushr 1) or (runningHigh shl 63)
+            runningHigh = runningHigh ushr 1
+            if (carry != 0L) runningHigh = runningHigh xor gcmReductionPolynomial
+        }
+        for (bit in 0 until 64) {
+            if (operandLow < 0) {
+                resultHigh = resultHigh xor runningHigh
+                resultLow = resultLow xor runningLow
+            }
+            operandLow = operandLow shl 1
+            val carry = runningLow and 1L
+            runningLow = (runningLow ushr 1) or (runningHigh shl 63)
+            runningHigh = runningHigh ushr 1
+            if (carry != 0L) runningHigh = runningHigh xor gcmReductionPolynomial
+        }
+
+        stateHigh = resultHigh
+        stateLow = resultLow
+    }
+}
+
+private fun ByteArray.bigEndianLongAt(index: Int): Long {
+    var value = 0L
+    for (offset in 0 until 8) {
+        value = (value shl 8) or (this[index + offset].toLong() and 0xFF)
+    }
+    return value
+}
+
+private fun ByteArray.putBigEndianLong(index: Int, value: Long) {
+    for (offset in 0 until 8) {
+        this[index + offset] = (value ushr (56 - 8 * offset)).toByte()
+    }
 }
