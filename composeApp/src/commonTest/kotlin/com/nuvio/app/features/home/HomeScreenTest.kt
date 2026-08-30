@@ -29,60 +29,50 @@ import kotlin.test.assertTrue
 class HomeScreenTest {
 
     @Test
-    fun `finished series does not offer an episode that aired long ago`() {
-        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
-        val finishedCour1 = requireNotNull(parseReleaseDateToEpochMs("2022-08-22T00:00:00Z"))
-
-        // Simkl's entry is one cour and is completed; the addon lists the whole run, so Next Up
-        // offers cour 2, which aired four years ago. That is backlog, not a continuation.
-        assertFalse(
-            shouldSurfaceNextUpForUntrackedSeries(
-                seedLastUpdatedEpochMs = finishedCour1,
-                releasedIso = "2022-10-01T00:00:00Z",
-                nowEpochMs = now,
+    fun `home remains loading while initial addon manifests are pending`() {
+        assertTrue(
+            shouldShowInitialHomeLoading(
+                hasRenderableHomeRows = false,
+                addonManifestsLoading = true,
+                homeCatalogLoading = false,
             ),
         )
     }
 
     @Test
-    fun `finished series still offers an episode that just aired or is about to`() {
-        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
-        val caughtUp = requireNotNull(parseReleaseDateToEpochMs("2026-08-24T00:00:00Z"))
-
-        // Followed weekly and caught up, so the tracker reads completed between airings.
-        assertTrue(
-            shouldSurfaceNextUpForUntrackedSeries(
-                seedLastUpdatedEpochMs = caughtUp,
-                releasedIso = "2026-08-26T00:00:00Z",
-                nowEpochMs = now,
+    fun `home does not show loading over rows or a terminal empty state`() {
+        assertFalse(
+            shouldShowInitialHomeLoading(
+                hasRenderableHomeRows = true,
+                addonManifestsLoading = true,
+                homeCatalogLoading = true,
             ),
         )
-        assertTrue(
-            shouldSurfaceNextUpForUntrackedSeries(
-                seedLastUpdatedEpochMs = requireNotNull(parseReleaseDateToEpochMs("2024-01-01T00:00:00Z")),
-                releasedIso = "2026-08-04T00:00:00Z",
-                nowEpochMs = now,
+        assertFalse(
+            shouldShowInitialHomeLoading(
+                hasRenderableHomeRows = false,
+                addonManifestsLoading = false,
+                homeCatalogLoading = false,
             ),
         )
     }
 
     @Test
-    fun `finished series does not offer an episode older than the seed or without a date`() {
-        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
-        val markedAt = requireNotNull(parseReleaseDateToEpochMs("2026-08-20T00:00:00Z"))
-
+    fun `home collapses hero space for terminal empty content`() {
         assertFalse(
-            shouldSurfaceNextUpForUntrackedSeries(
-                seedLastUpdatedEpochMs = markedAt,
-                releasedIso = "2009-06-26T00:00:00Z",
-                nowEpochMs = now,
+            shouldShowHomeHeroSlot(
+                heroEnabled = true,
+                hasHeroItems = false,
+                isResolvingHeroSources = false,
+                hasRenderableHomeRows = false,
             ),
         )
-        assertFalse(
-            shouldSurfaceNextUpForUntrackedSeries(
-                seedLastUpdatedEpochMs = markedAt,
-                releasedIso = null,
-                nowEpochMs = now,
+        assertTrue(
+            shouldShowHomeHeroSlot(
+                heroEnabled = true,
+                hasHeroItems = false,
+                isResolvingHeroSources = true,
+                hasRenderableHomeRows = false,
             ),
         )
     }
@@ -1033,6 +1023,64 @@ class HomeScreenTest {
             episodeNumber = index,
             markedAtEpochMs = 10_000L - index,
         )
+    @Test
+    fun `finished series does not offer an episode that aired long ago`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val finishedCour1 = requireNotNull(parseReleaseDateToEpochMs("2022-08-22T00:00:00Z"))
+
+        // Simkl's entry is one cour and is completed; the addon lists the whole run, so Next Up
+        // offers cour 2, which aired four years ago. That is backlog, not a continuation.
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = finishedCour1,
+                releasedIso = "2022-10-01T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun `finished series still offers an episode that just aired or is about to`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val caughtUp = requireNotNull(parseReleaseDateToEpochMs("2026-08-24T00:00:00Z"))
+
+        // Followed weekly and caught up, so the tracker reads completed between airings.
+        assertTrue(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = caughtUp,
+                releasedIso = "2026-08-26T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+        assertTrue(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = requireNotNull(parseReleaseDateToEpochMs("2024-01-01T00:00:00Z")),
+                releasedIso = "2026-08-04T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun `finished series does not offer an episode older than the seed or without a date`() {
+        val now = requireNotNull(parseReleaseDateToEpochMs("2026-08-25T00:00:00Z"))
+        val markedAt = requireNotNull(parseReleaseDateToEpochMs("2026-08-20T00:00:00Z"))
+
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = markedAt,
+                releasedIso = "2009-06-26T00:00:00Z",
+                nowEpochMs = now,
+            ),
+        )
+        assertFalse(
+            shouldSurfaceNextUpForUntrackedSeries(
+                seedLastUpdatedEpochMs = markedAt,
+                releasedIso = null,
+                nowEpochMs = now,
+            ),
+        )
+    }
 
     private companion object {
         const val MILLIS_PER_DAY = 24L * 60L * 60L * 1000L
