@@ -2364,7 +2364,7 @@ private fun HoldToSpeedValueDialog(
     onSpeedSelected: (Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val options = listOf(1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
+    val options = listOf(1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 3.5f)
 
     BasicAlertDialog(
         onDismissRequest = onDismiss,

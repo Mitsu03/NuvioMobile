@@ -224,7 +224,7 @@ internal fun PlayerScreenRuntime.cycleResizeMode() {
 }
 
 internal fun PlayerScreenRuntime.cyclePlaybackSpeed() {
-    val speeds = listOf(1f, 1.25f, 1.5f, 2f)
+    val speeds = listOf(1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 3.5f)
     val current = playbackSnapshot.playbackSpeed
     val next = speeds.firstOrNull { it > current + 0.01f } ?: speeds.first()
     playerController?.setPlaybackSpeed(next)
