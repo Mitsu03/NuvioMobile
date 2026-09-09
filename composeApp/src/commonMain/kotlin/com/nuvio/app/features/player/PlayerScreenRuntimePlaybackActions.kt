@@ -208,6 +208,24 @@ internal fun shouldSendStopScrobble(
     progressPercent: Float,
 ): Boolean = hasActiveScrobble || progressPercent >= 80f
 
+/**
+ * A pause past the watched threshold means the episode is effectively finished: trackers only
+ * write history on a stop at >= 80%, so a pause there leaves the episode unwatched. Playback is
+ * frequently torn down before the ended state arrives - the app is backgrounded or the process
+ * is killed during the credits - so the pause is the last chance to report the completion.
+ */
+internal fun shouldEscalatePauseToCompletionStop(progressPercent: Float): Boolean =
+    progressPercent >= 80f
+
+internal fun PlayerScreenRuntime.emitPauseScrobbleForCurrentProgress() {
+    val progressPercent = currentPlaybackProgressPercent()
+    if (shouldEscalatePauseToCompletionStop(progressPercent)) {
+        emitStopScrobbleForCurrentProgress()
+        return
+    }
+    emitTrackingScrobblePause(progressPercent)
+}
+
 internal fun shouldUpdateTrackingScrobbleAfterSeek(
     hasActiveScrobble: Boolean,
     progressPercent: Float,
@@ -253,7 +271,7 @@ internal fun PlayerScreenRuntime.flushWatchProgress(
     scrobbleAction: TrackingScrobbleAction = TrackingScrobbleAction.STOP,
 ) {
     when (scrobbleAction) {
-        TrackingScrobbleAction.PAUSE -> emitTrackingScrobblePause()
+        TrackingScrobbleAction.PAUSE -> emitPauseScrobbleForCurrentProgress()
         TrackingScrobbleAction.STOP -> emitStopScrobbleForCurrentProgress()
         TrackingScrobbleAction.START -> Unit
     }

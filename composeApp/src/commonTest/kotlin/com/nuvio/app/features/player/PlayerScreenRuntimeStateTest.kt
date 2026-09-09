@@ -121,6 +121,20 @@ class PlayerScreenRuntimeStateTest {
         )
     }
 
+    @Test
+    fun pauseScrobble_escalatesToCompletionAtWatchedThreshold() {
+        assertTrue(shouldEscalatePauseToCompletionStop(80f))
+        assertTrue(shouldEscalatePauseToCompletionStop(99.15f))
+        assertTrue(shouldEscalatePauseToCompletionStop(100f))
+    }
+
+    @Test
+    fun pauseScrobble_staysAPauseBelowWatchedThreshold() {
+        assertFalse(shouldEscalatePauseToCompletionStop(0f))
+        assertFalse(shouldEscalatePauseToCompletionStop(45f))
+        assertFalse(shouldEscalatePauseToCompletionStop(79.99f))
+    }
+
     private fun testPlayerScreenArgs() = PlayerScreenArgs(
         profileId = 1,
         title = "Title",
