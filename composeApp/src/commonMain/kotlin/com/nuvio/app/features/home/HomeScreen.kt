@@ -1404,15 +1404,10 @@ private suspend fun resolveHomeNextUpCandidate(
     providerOwnsCompletedHistory: Boolean,
 ): HomeNextUpResolutionAttempt {
     val contentId = completedEntry.content.id
-    val meta = try {
-        MetaDetailsRepository.fetch(
-            type = completedEntry.content.type,
-            id = contentId,
-        )
-    } catch (error: Throwable) {
-        if (error is CancellationException) throw error
-        null
-    }
+    val meta = fetchHomeNextUpMeta(
+        contentType = completedEntry.content.type,
+        contentId = contentId,
+    )
     if (meta == null) {
         return HomeNextUpResolutionAttempt.transientFailure()
     }
@@ -1493,6 +1488,32 @@ private suspend fun resolveHomeNextUpCandidate(
     return HomeNextUpResolutionAttempt.success(
         contentId to (sortTimestamp to item),
     )
+}
+
+/**
+ * Fetches the show behind a Next Up seed, falling back to the ids the tracker knows it under.
+ *
+ * A tracker gives each season or cour of a franchise its own ids, and the one currently airing
+ * often carries an id no installed meta addon answers for. Without a fallback the candidate fails
+ * to resolve and the show simply stops appearing in Continue Watching, even though the tracker
+ * still lists it as being watched.
+ */
+private suspend fun fetchHomeNextUpMeta(
+    contentType: String,
+    contentId: String,
+): MetaDetails? {
+    suspend fun fetch(id: String): MetaDetails? = try {
+        MetaDetailsRepository.fetch(type = contentType, id = id)
+    } catch (error: Throwable) {
+        if (error is CancellationException) throw error
+        null
+    }
+
+    fetch(contentId)?.let { return it }
+    for (alternateId in WatchProgressRepository.alternateContentIdsForMetadata(contentId)) {
+        fetch(alternateId)?.let { return it }
+    }
+    return null
 }
 
 private fun MetaDetails.videoForSeriesAction(action: SeriesPrimaryAction): MetaVideo? {

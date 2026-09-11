@@ -49,6 +49,7 @@ import kotlinx.coroutines.sync.withPermit
 private const val WATCH_PROGRESS_METADATA_RESOLUTION_CONCURRENCY = 4
 private const val WATCH_PROGRESS_METADATA_RESOLUTION_LIMIT = 64
 private const val WATCH_PROGRESS_METADATA_FETCH_ATTEMPTS = 3
+private const val WATCH_PROGRESS_METADATA_ALTERNATE_ID_LIMIT = 4
 private const val WATCH_PROGRESS_METADATA_RETRY_BASE_DELAY_MS = 750L
 private const val WATCH_PROGRESS_DELTA_PAGE_SIZE = 900
 private const val WATCH_PROGRESS_DELTA_OPERATION_UPSERT = "upsert"
@@ -1085,12 +1086,49 @@ object WatchProgressRepository {
             }
             if (meta != null) break
         }
+        if (meta == null) {
+            meta = fetchMetadataFromAlternateContentIds(key)
+        }
         return RemoteMetadataResolutionResult(
             key = key,
             entries = entries,
             meta = meta,
         )
     }
+
+    /**
+     * Second pass for rows whose own id no meta addon answers for.
+     *
+     * Trackers hand each season or cour of a franchise its own ids, and the newest one routinely
+     * carries an id addons have not caught up with yet. Its sibling entries describe the same show
+     * under an id they do serve, which is enough to give the row a title and artwork.
+     */
+    private suspend fun fetchMetadataFromAlternateContentIds(
+        key: WatchProgressMetadataKey,
+    ): MetaDetails? {
+        val alternates = activeProgressProvider()
+            ?.alternateContentIds(key.metaId)
+            .orEmpty()
+            .take(WATCH_PROGRESS_METADATA_ALTERNATE_ID_LIMIT)
+        for (alternateId in alternates) {
+            val meta = try {
+                MetaDetailsRepository.fetch(key.metaType, alternateId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                null
+            }
+            if (meta != null) return meta
+        }
+        return null
+    }
+
+    /** Alternate ids a Next Up candidate can borrow metadata from, best first. */
+    internal fun alternateContentIdsForMetadata(contentId: String): List<String> =
+        activeProgressProvider()
+            ?.alternateContentIds(contentId)
+            .orEmpty()
+            .take(WATCH_PROGRESS_METADATA_ALTERNATE_ID_LIMIT)
 
     fun upsertPlaybackProgress(
         session: WatchProgressPlaybackSession,

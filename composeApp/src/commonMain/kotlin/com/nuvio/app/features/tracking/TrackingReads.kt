@@ -151,6 +151,16 @@ interface TrackingProgressProvider {
     fun applyOptimisticRemoval(entries: Collection<WatchProgressEntry>) = Unit
     fun applyOptimisticProgress(entry: WatchProgressEntry) = Unit
     fun normalizeParentContentId(parentContentId: String, videoId: String?): String = parentContentId
+
+    /**
+     * Other ids the provider knows this content under, most likely to be served by a meta addon
+     * first.
+     *
+     * Trackers split a franchise into one entry per season or cour and hand each its own ids, so
+     * the id a row arrives under is not always one an addon can answer for. The sibling entries of
+     * the same show usually carry an id that is.
+     */
+    fun alternateContentIds(contentId: String): List<String> = emptyList()
     suspend fun refreshEpisodeProgress(contentId: String, forceRefresh: Boolean) = Unit
     fun isHiddenFromProgress(contentId: String): Boolean = false
 

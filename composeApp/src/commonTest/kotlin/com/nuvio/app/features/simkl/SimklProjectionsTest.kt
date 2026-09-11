@@ -3,6 +3,8 @@ package com.nuvio.app.features.simkl
 import com.nuvio.app.features.tracking.TrackingMediaKind
 import com.nuvio.app.features.tracking.TrackingMembershipRemovalImpact
 import com.nuvio.app.features.watchprogress.WatchProgressSourceSimklPlayback
+import com.nuvio.app.features.watchprogress.shouldTreatAsInProgressForContinueWatching
+import com.nuvio.app.features.watchprogress.shouldUseAsCompletedSeedForContinueWatching
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -359,6 +361,263 @@ class SimklProjectionsTest {
         seasons = seasons,
         movie = if (type == SimklMediaType.MOVIES) media(id, imdb, mal, slug = slug) else null,
         show = if (type != SimklMediaType.MOVIES) media(id, imdb, mal, slug = slug) else null,
+    )
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Summary markers: Simkl reports progress without per-episode history.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `episode marker parses seasoned and flat anime coordinates`() {
+        assertEquals(SimklEpisodeMarker(season = 2, episode = 13), parseSimklEpisodeMarker("S2E13"))
+        assertEquals(SimklEpisodeMarker(season = 1, episode = 3), parseSimklEpisodeMarker("S01E03"))
+        assertEquals(SimklEpisodeMarker(season = null, episode = 13), parseSimklEpisodeMarker("E13"))
+        assertEquals(SimklEpisodeMarker(season = 2, episode = 13), parseSimklEpisodeMarker(" s2e13 "))
+        assertNull(parseSimklEpisodeMarker("S2"))
+        assertNull(parseSimklEpisodeMarker("2x13"))
+        assertNull(parseSimklEpisodeMarker(null))
+    }
+
+    @Test
+    fun `summary marker seeds next up when episode history is missing`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 1063491,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 13,
+                    lastWatched = "S2E13",
+                ),
+            ),
+        )
+
+        val seed = snapshot.toSimklProgressEntries().single()
+
+        assertEquals("tt5607616", seed.parentMetaId)
+        assertEquals(2, seed.seasonNumber)
+        assertEquals(13, seed.episodeNumber)
+        assertTrue(seed.isCompleted)
+        assertTrue(seed.shouldUseAsCompletedSeedForContinueWatching())
+        assertFalse(seed.shouldTreatAsInProgressForContinueWatching())
+    }
+
+    @Test
+    fun `summary seeds never reach watch history`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 1063491,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 13,
+                    lastWatched = "S2E13",
+                ),
+            ),
+        )
+
+        assertTrue(snapshot.toSimklWatchedProjection().items.isEmpty())
+    }
+
+    @Test
+    fun `flat anime marker without a season lands in the entry's only season`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 2125704,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 6,
+                    lastWatched = "E6",
+                    seasons = listOf(SimklSeason(3, emptyList())),
+                ),
+            ),
+        )
+
+        val seed = snapshot.toSimklProgressEntries().single()
+
+        assertEquals(3, seed.seasonNumber)
+        assertEquals(6, seed.episodeNumber)
+    }
+
+    @Test
+    fun `exact episode history keeps the summary seed out`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 509292,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 25,
+                    lastWatched = "S1E25",
+                    seasons = listOf(
+                        SimklSeason(
+                            1,
+                            listOf(SimklEpisode(1, "2023-11-14T23:00:00Z", SimklEpisodeMapping(1, 1))),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(snapshot.toSimklProgressEntries().isEmpty())
+        assertEquals(1, snapshot.toSimklWatchedProjection().items.single().episode)
+    }
+
+    @Test
+    fun `episode rows Simkl returns without coordinates still leave a summary seed`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 2743422,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 5,
+                    lastWatched = "E5",
+                    seasons = listOf(
+                        SimklSeason(
+                            number = null,
+                            episodes = (1..5).map { episode ->
+                                SimklEpisode(episode, "2023-12-01T20:0$episode:00Z")
+                            },
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(snapshot.toSimklWatchedProjection().items.isEmpty())
+
+        val seed = snapshot.toSimklProgressEntries().single()
+
+        assertEquals(1, seed.seasonNumber)
+        assertEquals(5, seed.episodeNumber)
+    }
+
+    @Test
+    fun `entries hidden from continue watching are not seeded`() {
+        listOf(
+            SimklListStatus.COMPLETED,
+            SimklListStatus.ON_HOLD,
+            SimklListStatus.DROPPED,
+        ).forEach { status ->
+            val snapshot = SimklSyncSnapshot(
+                entries = listOf(
+                    summaryEntry(
+                        id = 1063491,
+                        imdb = "tt5607616",
+                        watchedEpisodes = 13,
+                        lastWatched = "S2E13",
+                        status = status,
+                    ),
+                ),
+            )
+
+            assertTrue(
+                snapshot.toSimklProgressEntries().isEmpty(),
+                "status $status must not seed Next Up",
+            )
+        }
+    }
+
+    @Test
+    fun `entries without reported progress are not seeded`() {
+        val snapshot = SimklSyncSnapshot(
+            entries = listOf(
+                summaryEntry(
+                    id = 1063491,
+                    imdb = "tt5607616",
+                    watchedEpisodes = 0,
+                    lastWatched = null,
+                ),
+            ),
+        )
+
+        assertTrue(snapshot.toSimklProgressEntries().isEmpty())
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Alternate ids: the airing cour carries an id addons do not serve.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `the airing cour borrows the ids its sibling entries are known under`() {
+        val snapshot = SimklSyncSnapshot(entries = reZeroEntries())
+
+        val alternates = snapshot.alternateContentIdsFor("tt36501927")
+
+        assertEquals("tt5607616", alternates.first())
+        assertTrue(alternates.contains("kitsu:49746"))
+        assertFalse(alternates.contains("tt36501927"))
+    }
+
+    @Test
+    fun `unknown content has no alternates`() {
+        val snapshot = SimklSyncSnapshot(entries = reZeroEntries())
+
+        assertTrue(snapshot.alternateContentIdsFor("tt0000000").isEmpty())
+        assertTrue(snapshot.alternateContentIdsFor("  ").isEmpty())
+    }
+
+    @Test
+    fun `entries of unrelated shows are never offered as alternates`() {
+        val unrelated = SimklLibraryEntry(
+            mediaType = SimklMediaType.ANIME,
+            status = SimklListStatus.WATCHING,
+            show = SimklMedia(
+                title = "Another show",
+                ids = buildJsonObject {
+                    put("simkl", 99999)
+                    put("imdb", "tt9999999")
+                    put("tvdb", "999999")
+                },
+            ),
+        )
+        val snapshot = SimklSyncSnapshot(entries = reZeroEntries() + unrelated)
+
+        val alternates = snapshot.alternateContentIdsFor("tt36501927")
+
+        assertFalse(alternates.contains("tt9999999"))
+    }
+
+    /** The shape Simkl really returns: one entry per cour, all sharing one TVDB id. */
+    private fun reZeroEntries(): List<SimklLibraryEntry> = listOf(
+        animeCour(simklId = 509292, imdb = "tt5607616", kitsu = 11209, status = SimklListStatus.COMPLETED),
+        animeCour(simklId = 2125704, imdb = "tt5607616", kitsu = 47235, status = SimklListStatus.COMPLETED),
+        animeCour(simklId = 2743422, imdb = "tt36501927", kitsu = 49746, status = SimklListStatus.WATCHING),
+    )
+
+    private fun animeCour(
+        simklId: Long,
+        imdb: String,
+        kitsu: Long,
+        status: SimklListStatus,
+    ): SimklLibraryEntry = SimklLibraryEntry(
+        mediaType = SimklMediaType.ANIME,
+        status = status,
+        lastWatchedAt = "2026-08-24T14:44:37Z",
+        show = SimklMedia(
+            title = "Re:Zero",
+            ids = buildJsonObject {
+                put("simkl", simklId)
+                put("imdb", imdb)
+                put("kitsu", kitsu)
+                put("tvdb", "305089")
+            },
+        ),
+    )
+
+    private fun summaryEntry(
+        id: Long,
+        imdb: String,
+        watchedEpisodes: Int,
+        lastWatched: String?,
+        status: SimklListStatus = SimklListStatus.WATCHING,
+        seasons: List<SimklSeason> = emptyList(),
+    ): SimklLibraryEntry = SimklLibraryEntry(
+        mediaType = SimklMediaType.ANIME,
+        status = status,
+        lastWatchedAt = "2023-12-01T20:00:00Z",
+        lastWatched = lastWatched,
+        watchedEpisodesCount = watchedEpisodes,
+        totalEpisodesCount = 25,
+        seasons = seasons,
+        show = media(id, imdb),
     )
 
     private fun media(
