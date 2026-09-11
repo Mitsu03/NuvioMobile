@@ -142,7 +142,8 @@ internal fun WatchProgressEntry.shouldTreatAsInProgressForContinueWatching(): Bo
     if (!hasStartedPlayback) return false
 
     return entry.source != WatchProgressSourceTraktHistory &&
-        entry.source != WatchProgressSourceTraktShowProgress
+        entry.source != WatchProgressSourceTraktShowProgress &&
+        entry.source != WatchProgressSourceSimklShowProgress
 }
 
 internal fun WatchProgressEntry.shouldUseAsCompletedSeedForContinueWatching(): Boolean {

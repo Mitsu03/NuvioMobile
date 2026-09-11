@@ -14,6 +14,7 @@ import com.nuvio.app.features.watched.WatchedItem
 import com.nuvio.app.features.watched.watchedItemKey
 import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watchprogress.WatchProgressSourceSimklPlayback
+import com.nuvio.app.features.watchprogress.WatchProgressSourceSimklShowProgress
 import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 
 internal data class SimklWatchedProjection(
@@ -163,12 +164,167 @@ internal fun SimklSyncSnapshot.movieAlternateWatchedKeys(): Set<String> {
     return extraKeys
 }
 
-internal fun SimklSyncSnapshot.toSimklProgressEntries(): List<WatchProgressEntry> =
-    playback
+/**
+ * Season/episode coordinates Simkl reports for an entry as a summary marker,
+ * e.g. `"S2E13"` for a show or `"E13"` for anime it tracks without seasons.
+ */
+internal data class SimklEpisodeMarker(
+    val season: Int?,
+    val episode: Int,
+)
+
+private val SIMKL_EPISODE_MARKER = Regex("^(?:[Ss](\\d+))?[Ee](\\d+)$")
+
+internal fun parseSimklEpisodeMarker(value: String?): SimklEpisodeMarker? {
+    val match = value?.trim()?.let(SIMKL_EPISODE_MARKER::matchEntire) ?: return null
+    val episode = match.groupValues[2].toIntOrNull() ?: return null
+    return SimklEpisodeMarker(
+        season = match.groupValues[1].takeIf(String::isNotEmpty)?.toIntOrNull(),
+        episode = episode,
+    )
+}
+
+private fun SimklLibraryEntry.canSeedContinueWatchingFromSummary(): Boolean =
+    status != SimklListStatus.COMPLETED && !status.hidesContinueWatching()
+
+/**
+ * The furthest episode Simkl reports for this entry through its `last_watched` marker.
+ *
+ * A marker without a season (`"E13"`) belongs to an entry Simkl tracks with flat numbering,
+ * as it does for anime; it is placed in the entry's only known season, or season 1.
+ */
+private fun SimklLibraryEntry.summaryWatchedEpisode(): SimklEpisodeMarker? {
+    if (watchedEpisodesCount <= 0) return null
+    val marker = parseSimklEpisodeMarker(lastWatched) ?: return null
+    val season = marker.season
+        ?: seasons.mapNotNull(SimklSeason::number).distinct().singleOrNull()
+        ?: 1
+    return marker.copy(season = season)
+}
+
+internal fun SimklSyncSnapshot.toSimklProgressEntries(): List<WatchProgressEntry> {
+    val playbackEntries = playback
         .mapNotNull { session -> session.toWatchProgressEntry(entries) }
         .groupBy(WatchProgressEntry::progressKey)
         .mapNotNull { (_, candidates) -> candidates.maxByOrNull(WatchProgressEntry::lastUpdatedEpochMs) }
+    val coveredContentIds = playbackEntries.mapTo(mutableSetOf()) { entry ->
+        entry.parentMetaId.trim().lowercase()
+    }
+    return (playbackEntries + summaryNextUpSeedEntries(coveredContentIds))
         .sortedByDescending(WatchProgressEntry::lastUpdatedEpochMs)
+}
+
+/**
+ * Completed seeds rebuilt from each entry's `last_watched` marker.
+ *
+ * Simkl routinely answers with an entry's aggregate progress and no per-episode history —
+ * anime especially, where episodes come back seasonless and without watch timestamps. Those
+ * entries then contribute nothing to watch history, Next Up has no episode to follow, and a
+ * show the viewer is halfway through silently drops out of Continue Watching.
+ *
+ * These entries exist purely to seed Next Up, mirroring Trakt's show-progress seeds: they are
+ * completed, so they never surface as a Continue Watching card of their own, and they never
+ * enter watch history, so nothing fabricated is written back to Simkl.
+ */
+private fun SimklSyncSnapshot.summaryNextUpSeedEntries(
+    coveredContentIds: Set<String>,
+): List<WatchProgressEntry> = entries.mapNotNull { entry ->
+    if (entry.isMovieEntry()) return@mapNotNull null
+    if (!entry.canSeedContinueWatchingFromSummary()) return@mapNotNull null
+    if (entry.hasExactEpisodeHistory()) return@mapNotNull null
+    val media = entry.media ?: return@mapNotNull null
+    val parentId = media.canonicalContentId() ?: return@mapNotNull null
+    if (parentId.trim().lowercase() in coveredContentIds) return@mapNotNull null
+    val marker = entry.summaryWatchedEpisode() ?: return@mapNotNull null
+    val season = marker.season ?: return@mapNotNull null
+    val lastWatchedAt = parseSimklUtcEpochMs(entry.lastWatchedAt) ?: return@mapNotNull null
+
+    WatchProgressEntry(
+        contentType = "series",
+        parentMetaId = parentId,
+        parentMetaType = "series",
+        videoId = buildPlaybackVideoId(
+            parentMetaId = parentId,
+            seasonNumber = season,
+            episodeNumber = marker.episode,
+        ),
+        title = media.title?.takeIf(String::isNotBlank) ?: parentId,
+        poster = simklPosterUrl(media.poster),
+        seasonNumber = season,
+        episodeNumber = marker.episode,
+        lastPositionMs = 1L,
+        durationMs = 1L,
+        lastUpdatedEpochMs = lastWatchedAt,
+        isCompleted = true,
+        progressPercent = 100f,
+        source = WatchProgressSourceSimklShowProgress,
+        trackingProviderId = TrackingProviderId.SIMKL.storageId,
+        trackingProviderItemId = media.simklTrackingProviderItemId(),
+        trackingSourceUrl = buildSimklSourceUrl(entry.mediaType, media),
+        progressKey = "simkl-summary:$parentId:$season:${marker.episode}",
+    )
+}
+
+/**
+ * True when the entry carries episode rows the watched projection can actually use.
+ *
+ * The conditions mirror [toSimklWatchedProjection] on purpose: rows Simkl returns without
+ * usable coordinates — anime episodes arrive seasonless — produce no watched history, so an
+ * entry that only has those still needs its summary seed.
+ */
+private fun SimklLibraryEntry.hasExactEpisodeHistory(): Boolean =
+    seasons.any { season ->
+        season.episodes.any { episode ->
+            (episode.tvdb?.season ?: season.number) != null &&
+                (episode.tvdb?.episode ?: episode.number) != null &&
+                parseSimklUtcEpochMs(episode.watchedAt) != null
+        }
+    }
+
+/**
+ * Content ids a meta addon could answer for when [contentId] itself resolves to nothing.
+ *
+ * Simkl models a franchise as one entry per season or cour, each with its own ids, so the newest
+ * cour can carry an IMDB id no addon has heard of while the entries beside it carry the one every
+ * addon knows. Entries sharing a TVDB id are the same show to those addons, which makes their ids
+ * usable stand-ins for artwork and episode lists.
+ *
+ * Ordered by how widely each id namespace is served, so the first attempt is the likeliest to land.
+ */
+internal fun SimklSyncSnapshot.alternateContentIdsFor(contentId: String): List<String> {
+    val normalized = contentId.trim()
+    if (normalized.isEmpty()) return emptyList()
+    val matches = entries.filter { entry -> entry.matchesContentId(normalized) }
+    if (matches.isEmpty()) return emptyList()
+
+    val tvdbIds = matches.mapNotNullTo(mutableSetOf()) { entry ->
+        entry.media?.ids?.idValue("tvdb")?.takeIf(String::isNotBlank)
+    }
+    val related = if (tvdbIds.isEmpty()) {
+        matches
+    } else {
+        entries.filter { entry ->
+            entry.media?.ids?.idValue("tvdb")?.takeIf(String::isNotBlank) in tvdbIds
+        }
+    }
+    val media = (matches + related).mapNotNull(SimklLibraryEntry::media)
+
+    fun idsFor(key: String, prefix: String): List<String> = media
+        .mapNotNull { entry -> entry.ids.idValue(key)?.takeIf(String::isNotBlank) }
+        .map { value -> "$prefix$value" }
+
+    return buildList {
+        addAll(idsFor("imdb", ""))
+        addAll(idsFor("tmdb", "tmdb:"))
+        addAll(idsFor("tvdb", "tvdb:"))
+        addAll(idsFor("kitsu", "kitsu:"))
+        addAll(idsFor("mal", "mal:"))
+        addAll(idsFor("anilist", "anilist:"))
+        addAll(idsFor("anidb", "anidb:"))
+    }
+        .distinct()
+        .filterNot { candidate -> candidate.equals(normalized, ignoreCase = true) }
+}
 
 internal fun SimklSyncSnapshot.toSimklShowIdSiblings(): Map<String, Set<String>> {
     val siblingsMap = mutableMapOf<String, MutableSet<String>>()

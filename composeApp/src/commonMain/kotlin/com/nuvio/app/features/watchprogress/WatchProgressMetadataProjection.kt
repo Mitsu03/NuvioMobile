@@ -1,6 +1,8 @@
 package com.nuvio.app.features.watchprogress
 
 import com.nuvio.app.features.details.MetaDetails
+import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.watching.domain.normalizeSeasonNumber
 import com.nuvio.app.features.tracking.WatchProgressSource
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -19,13 +21,10 @@ internal fun enrichWatchProgressEntry(
     current: WatchProgressEntry,
     meta: MetaDetails,
 ): WatchProgressEntry {
-    val episodeVideo = if (current.seasonNumber != null && current.episodeNumber != null) {
-        meta.videos.firstOrNull { video ->
-            video.season == current.seasonNumber && video.episode == current.episodeNumber
-        }
-    } else {
-        null
-    }
+    val episodeVideo = meta.findEpisodeVideo(
+        seasonNumber = current.seasonNumber,
+        episodeNumber = current.episodeNumber,
+    )
     return current.copy(
         videoId = if (current.source != WatchProgressSourceLocal && episodeVideo != null) {
             episodeVideo.id.takeIf(String::isNotBlank) ?: current.videoId
@@ -42,6 +41,42 @@ internal fun enrichWatchProgressEntry(
             ?: meta.description?.takeIf(String::isNotBlank)
             ?: current.pauseDescription,
     )
+}
+
+/**
+ * Finds the addon episode a progress row refers to.
+ *
+ * Trackers count anime in one continuous run — seasonless for Simkl, season 1 for Trakt — while
+ * meta addons split the same run into seasons. Falling back to the episode's position across the
+ * addon's main seasons is what keeps those rows showing an episode title and still image instead
+ * of the show's poster. It mirrors the same fallback Next Up already applies when it looks for the
+ * episode following a tracker seed.
+ */
+private fun MetaDetails.findEpisodeVideo(
+    seasonNumber: Int?,
+    episodeNumber: Int?,
+): MetaVideo? {
+    if (episodeNumber == null || episodeNumber <= 0) return null
+    if (seasonNumber != null) {
+        videos.firstOrNull { video ->
+            video.season == seasonNumber && video.episode == episodeNumber
+        }?.let { return it }
+        if (seasonNumber != 1) return null
+    }
+
+    val mainEpisodes = videos
+        .filter { video -> normalizeSeasonNumber(video.season) > 0 && video.episode != null }
+        .sortedWith(
+            compareBy(
+                { video -> normalizeSeasonNumber(video.season) },
+                { video -> video.episode ?: 0 },
+            ),
+        )
+    val spansMultipleSeasons = mainEpisodes
+        .mapTo(mutableSetOf()) { video -> normalizeSeasonNumber(video.season) }
+        .size > 1
+    if (seasonNumber != null && !spansMultipleSeasons) return null
+    return mainEpisodes.getOrNull(episodeNumber - 1)
 }
 
 internal fun WatchProgressEntry.needsRemoteMetadataEnrichment(): Boolean =
