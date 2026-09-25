@@ -58,9 +58,18 @@ internal fun PlayerToolbar(
     onLockToggle: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onNextEpisodeClick: (() -> Unit)? = null,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
+        onNextEpisodeClick?.let {
+            PlayerAction(
+                description = stringResource(Res.string.player_next_episode),
+                icon = Icons.Rounded.SkipNext,
+                iconSize = 32.dp,
+                onClick = it,
+            )
+        }
         PlayerAction(
             description = stringResource(
                 if (isLocked) Res.string.compose_player_unlock_controls else Res.string.compose_player_lock_controls,
