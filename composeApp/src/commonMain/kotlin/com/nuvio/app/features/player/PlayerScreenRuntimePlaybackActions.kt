@@ -13,11 +13,44 @@ import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+internal fun PlayerScreenRuntime.finishTimelineScrub(positionMs: Long) {
+    lastManualSkipSeekPositions = playbackSnapshot.positionMs to positionMs
+    isScrubbingTimeline = false
+    scrubbingPositionMs = positionMs.takeIf { playbackSnapshot.isLoading }
+}
+
+internal fun PlayerScreenRuntime.updatePlaybackSnapshot(
+    snapshot: PlayerPlaybackSnapshot,
+    playbackKey: PlaybackKey = activePlaybackKey,
+): Boolean {
+    if (playbackKey != activePlaybackKey) return false
+    playbackSnapshot = snapshot
+    playbackSnapshotKey = playbackKey
+    val targetPositionMs = scrubbingPositionMs ?: return true
+    if (!isScrubbingTimeline && (
+            !snapshot.isLoading || snapshot.isEnded ||
+                abs(snapshot.positionMs - targetPositionMs) <= 1_000L
+            )
+    ) {
+        scrubbingPositionMs = null
+    }
+    return true
+}
 
 internal val PlayerScreenRuntime.activePlaybackIdentity: String
     get() = activeTorrentInfoHash
         ?.let { hash -> "torrent:$hash:${activeTorrentFileIdx ?: -1}" }
         ?: activeSourceUrl
+
+internal val PlayerScreenRuntime.activePlaybackKey: PlaybackKey
+    get() = PlaybackKey(
+        sourceIdentity = activePlaybackIdentity,
+        videoId = activeVideoId,
+        seasonNumber = activeSeasonNumber,
+        episodeNumber = activeEpisodeNumber,
+    )
 
 internal val PlayerScreenRuntime.playbackSession: WatchProgressPlaybackSession
     get() = WatchProgressPlaybackSession(
@@ -48,7 +81,7 @@ internal val PlayerScreenRuntime.playbackSession: WatchProgressPlaybackSession
     )
 
 internal fun PlayerScreenRuntime.resetIdentityStateIfNeeded() {
-    val identity = activePlaybackIdentity
+    val identity = activePlaybackKey
     if (lastResetPlaybackIdentity != identity) {
         lastResetPlaybackIdentity = identity
         shouldPlay = true
@@ -63,7 +96,9 @@ internal fun PlayerScreenRuntime.resetIdentityStateIfNeeded() {
         autoFetchedAddonSubtitlesForKey = null
         trackPreferenceRestoreApplied = false
         preferredAudioSelectionApplied = false
+        appliedAudioPreferences = null
         preferredSubtitleSelectionApplied = false
+        isUserExplicitAudioSelection = false
         isUserExplicitSubtitleSelection = false
         hasScannedTextTracksOnce = false
     }
@@ -260,6 +295,12 @@ internal fun PlayerScreenRuntime.tryShowParentalGuide() {
 internal suspend fun PlayerScreenRuntime.resolveParentalGuideImdbId(): String? {
     val candidates = listOf(parentMetaId, activeVideoId)
     candidates.firstNotNullOfOrNull(::extractParentalGuideImdbId)?.let { return it }
+    // Fallback: use imdb_id from addon meta response
+    val metaImdbId = (metaUiState.meta ?: playerMeta)
+        ?.takeIf { it.id == parentMetaId }
+        ?.imdbId
+        ?.takeIf { it.startsWith("tt") }
+    if (metaImdbId != null) return metaImdbId
     val tmdbId = candidates.firstNotNullOfOrNull(::extractParentalGuideTmdbId) ?: return null
     return TmdbService.tmdbToImdb(
         tmdbId = tmdbId,

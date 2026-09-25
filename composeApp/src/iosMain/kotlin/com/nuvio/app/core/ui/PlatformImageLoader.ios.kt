@@ -22,6 +22,8 @@ internal actual fun ImageLoader.Builder.configurePlatformImageLoader(): ImageLoa
             .build()
     }
 
+internal actual val platformProvidesImageLoader: Boolean = false
+
 private fun cachesDirectory(): String =
     NSSearchPathForDirectoriesInDomains(
         directory = NSCachesDirectory,
