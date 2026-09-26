@@ -33,7 +33,7 @@ fun snapToAllowedTimeout(value: Int): Int {
 }
 
 data class PlayerSettingsUiState(
-    val useLegacyPlayerLayout: Boolean = false,
+    val useLegacyPlayerLayout: Boolean = true,
     val showLoadingOverlay: Boolean = true,
     val showPlayerLoadingStatus: Boolean = true,
     val pauseOverlayEnabled: Boolean = true,
@@ -103,7 +103,7 @@ object PlayerSettingsRepository {
     val uiState: StateFlow<PlayerSettingsUiState> = _uiState.asStateFlow()
 
     private var hasLoaded = false
-    private var useLegacyPlayerLayout = false
+    private var useLegacyPlayerLayout = true
     private var showLoadingOverlay = true
     private var showPlayerLoadingStatus = true
     private var pauseOverlayEnabled = true
@@ -178,7 +178,7 @@ object PlayerSettingsRepository {
 
     fun clearLocalState() {
         hasLoaded = false
-        useLegacyPlayerLayout = false
+        useLegacyPlayerLayout = true
         showLoadingOverlay = true
         showPlayerLoadingStatus = true
         pauseOverlayEnabled = true
@@ -246,7 +246,7 @@ object PlayerSettingsRepository {
 
     private fun loadFromDisk() {
         hasLoaded = true
-        useLegacyPlayerLayout = PlayerSettingsStorage.loadUseLegacyPlayerLayout() ?: false
+        useLegacyPlayerLayout = PlayerSettingsStorage.loadUseLegacyPlayerLayout() ?: true
         showLoadingOverlay = PlayerSettingsStorage.loadShowLoadingOverlay() ?: true
         showPlayerLoadingStatus = PlayerSettingsStorage.loadShowPlayerLoadingStatus() ?: true
         pauseOverlayEnabled = PlayerSettingsStorage.loadPauseOverlayEnabled() ?: true
