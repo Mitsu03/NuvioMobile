@@ -1743,8 +1743,8 @@
     <string name="network_please_check_connection">Verifica a tua ligação e tenta novamente.</string>
     <string name="network_request_failed_http">O pedido falhou com HTTP %1$d</string>
     <string name="player_addon_subtitle_display_format">%1$s (%2$s)</string>
-    <string name="player_auto_sync_applied">Legendas sincronizadas automaticamente (%1$s)</string>
-    <string name="player_auto_sync_failed">Não foi possível sincronizar estas legendas</string>
+    <string name="player_auto_sync_applied">Legendas sincronizadas automaticamente (%1$s) ✅</string>
+    <string name="player_auto_sync_failed">Não foi possível sincronizar estas legendas ❌</string>
     <string name="player_auto_sync_running">A sincronizar legendas…</string>
     <string name="player_error_mpv_unavailable">O motor do leitor MPV não está disponível. Recompila a app.</string>
     <string name="player_error_unable_to_play_stream">Não foi possível reproduzir este stream.</string>
