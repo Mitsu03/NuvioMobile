@@ -151,7 +151,7 @@ private fun PlayerGestureFeedback(
                         }
                     }
                 }
-                GestureFeedbackIcon.Speed -> {
+                GestureFeedbackIcon.Speed, GestureFeedbackIcon.Subtitles -> {
                     val message = feedback.messageRes?.let { stringResource(it, *feedback.messageArgs.toTypedArray()) }
                         ?: feedback.message.orEmpty()
                     Text(

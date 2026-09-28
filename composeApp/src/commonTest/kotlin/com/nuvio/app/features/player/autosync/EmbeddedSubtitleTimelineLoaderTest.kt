@@ -87,7 +87,7 @@ class EmbeddedSubtitleTimelineLoaderTest {
 }
 
 /** Serves [bytes] the way a streaming server answers byte-Range requests. */
-private class InMemoryRangeFetcher(
+internal class InMemoryRangeFetcher(
     private val bytes: ByteArray,
     private val honorsRange: Boolean = true,
 ) : AutoSyncRangeFetcher {

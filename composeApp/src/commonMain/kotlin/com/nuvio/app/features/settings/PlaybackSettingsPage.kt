@@ -57,6 +57,7 @@ import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.player.AndroidLibmpvVideoOutput
 import com.nuvio.app.features.player.AndroidPlaybackEngine
 import com.nuvio.app.features.player.AudioLanguageOption
+import com.nuvio.app.features.player.autosync.AutoSyncPreferences
 import com.nuvio.app.features.player.AvailableLanguageOptions
 import com.nuvio.app.features.player.ExternalPlayerApp
 import com.nuvio.app.features.player.ExternalPlayerPlatform
@@ -665,6 +666,24 @@ private fun PlaybackSettingsSection(
                             onClick = { showLibassRenderTypeDialog = true },
                         )
                     }
+                }
+            }
+        }
+
+        if (AutoSyncPreferences.isSupported) {
+            val autoSyncEnabled by AutoSyncPreferences.enabled.collectAsStateWithLifecycle()
+            SettingsSection(
+                title = stringResource(Res.string.settings_playback_section_subtitle_auto_sync),
+                isTablet = isTablet,
+            ) {
+                SettingsGroup(isTablet = isTablet) {
+                    SettingsSwitchRow(
+                        title = stringResource(Res.string.settings_playback_auto_sync),
+                        description = stringResource(Res.string.settings_playback_auto_sync_description),
+                        checked = autoSyncEnabled,
+                        isTablet = isTablet,
+                        onCheckedChange = AutoSyncPreferences::setEnabled,
+                    )
                 }
             }
         }

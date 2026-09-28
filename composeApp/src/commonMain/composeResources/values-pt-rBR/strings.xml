@@ -770,6 +770,8 @@
     <string name="settings_playback_addon_subtitle_startup_mode">Carregamento de legendas</string>
     <string name="settings_playback_addon_subtitle_startup_preferred">Idiomas preferidos</string>
     <string name="settings_playback_addon_subtitle_startup_preferred_description">Busca idiomas preferidos antes de iniciar</string>
+    <string name="settings_playback_auto_sync">Sincronização automática</string>
+    <string name="settings_playback_auto_sync_description">Ao escolher uma legenda de addon, mede o quanto ela desvia da faixa de legendas do próprio vídeo e corrige automaticamente.</string>
     <string name="settings_playback_prefer_binge_group">Preferir Grupo de Maratona (Próximo Episódio)</string>
     <string name="settings_playback_prefer_binge_group_description">Tentar o mesmo perfil de fonte primeiro (mesmo addon/grupo de qualidade) antes das regras normais de reprodução automática.</string>
     <string name="settings_playback_reuse_binge_group">Reutilizar Grupo de Maratona</string>
@@ -810,6 +812,7 @@
     <string name="settings_playback_section_stream_auto_play">REPRODUÇÃO AUTOMÁTICA DE STREAM</string>
     <string name="settings_playback_section_stream_selection">SELEÇÃO DE STREAM</string>
     <string name="settings_playback_section_subtitle_audio">LEGENDA E ÁUDIO</string>
+    <string name="settings_playback_section_subtitle_auto_sync">SINCRONIZAÇÃO DE LEGENDA</string>
     <string name="settings_playback_section_subtitle_rendering">RENDERIZAÇÃO DE LEGENDA</string>
     <string name="settings_playback_selected_count">%1$d selecionado(s)</string>
     <string name="settings_playback_show_loading_overlay">Overlay de Carregamento</string>
@@ -929,6 +932,9 @@
     <string name="theme_rose">Rosa</string>
     <string name="theme_violet">Violeta</string>
     <string name="theme_white">Branco</string>
+    <string name="player_auto_sync_applied">Legendas sincronizadas automaticamente (%1$s)</string>
+    <string name="player_auto_sync_failed">Não foi possível sincronizar estas legendas</string>
+    <string name="player_auto_sync_running">Sincronizando legendas…</string>
     <string name="player_next_episode">Próximo Episódio</string>
     <string name="player_next_episode_finding_source">Buscando fonte…</string>
     <string name="player_next_episode_playing_via_countdown">Reproduzindo via %1$s em %2$d…</string>

@@ -872,6 +872,8 @@
     <string name="settings_playback_addon_subtitle_startup_mode">Carregamento de legendas de addons</string>
     <string name="settings_playback_addon_subtitle_startup_preferred">Idiomas preferidos</string>
     <string name="settings_playback_addon_subtitle_startup_preferred_description">Pré-carregar as legendas de addons antes da reprodução e anexar as pistas dos idiomas preferidos/secundários.</string>
+    <string name="settings_playback_auto_sync">Sincronização automática</string>
+    <string name="settings_playback_auto_sync_description">Quando escolhes uma legenda de addon, mede o desvio dela em relação à faixa de legendas do próprio vídeo e corrige-o automaticamente.</string>
     <string name="settings_playback_prefer_binge_group">Preferir grupo de maratona (Próximo episódio)</string>
     <string name="settings_playback_prefer_binge_group_description">Tenta primeiro o mesmo perfil de fonte (mesmo addon/grupo de qualidade) antes das regras normais de reprodução automática.</string>
     <string name="settings_playback_reuse_binge_group">Reutilizar grupo de maratona</string>
@@ -1741,6 +1743,9 @@
     <string name="network_please_check_connection">Verifica a tua ligação e tenta novamente.</string>
     <string name="network_request_failed_http">O pedido falhou com HTTP %1$d</string>
     <string name="player_addon_subtitle_display_format">%1$s (%2$s)</string>
+    <string name="player_auto_sync_applied">Legendas sincronizadas automaticamente (%1$s)</string>
+    <string name="player_auto_sync_failed">Não foi possível sincronizar estas legendas</string>
+    <string name="player_auto_sync_running">A sincronizar legendas…</string>
     <string name="player_error_mpv_unavailable">O motor do leitor MPV não está disponível. Recompila a app.</string>
     <string name="player_error_unable_to_play_stream">Não foi possível reproduzir este stream.</string>
     <string name="plugins_badge_disabled">Plugins desativados</string>
@@ -1834,6 +1839,7 @@
     <string name="p2p_consent_cancel">Cancelar</string>
     <string name="settings_p2p_title">Streaming P2P</string>
     <string name="settings_playback_section_p2p">STREAMING P2P</string>
+    <string name="settings_playback_section_subtitle_auto_sync">SINCRONIZAÇÃO DE LEGENDAS</string>
     <string name="settings_p2p_subtitle">Permitir streams ponto a ponto (torrent)</string>
     <string name="settings_p2p_hide_stats_title">Ocultar estatísticas de torrent</string>
     <string name="settings_p2p_hide_stats_subtitle">Oculta buffer, seeds, peers e velocidade de transferência durante o carregamento e a reprodução</string>
