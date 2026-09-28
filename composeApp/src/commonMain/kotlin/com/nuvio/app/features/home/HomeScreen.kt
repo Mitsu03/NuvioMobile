@@ -1542,11 +1542,33 @@ private suspend fun resolveHomeNextUpCandidate(
     val meta = nextUpMeta.meta
 
     val resolvedContentId = meta.id.takeIf(String::isNotBlank) ?: contentId
+    // A listing borrowed to reach past the seed becomes the show's identity from here on: the
+    // card, the player and the progress it writes all use the borrowed id, which is the one other
+    // devices opening the show from that addon already use. The history recorded under the
+    // show's own id comes along, or the episodes already watched would be offered again.
+    val carriesOwnHistory = nextUpMeta.extendsOwnListing &&
+        !resolvedContentId.equals(contentId, ignoreCase = true)
     val resolvedProgressEntries = WatchProgressRepository.prepareNextUpProgressEntries(
-        entries = watchProgressEntries,
+        entries = if (carriesOwnHistory) {
+            watchProgressEntries.map { entry ->
+                if (entry.parentMetaId.equals(contentId, ignoreCase = true)) {
+                    entry.copy(parentMetaId = resolvedContentId)
+                } else {
+                    entry
+                }
+            }
+        } else {
+            watchProgressEntries
+        },
         contentId = resolvedContentId,
     )
-    val resolvedWatchedItems = watchedItems
+    val resolvedWatchedItems = if (carriesOwnHistory) {
+        watchedItems.map { item ->
+            if (item.id.equals(contentId, ignoreCase = true)) item.copy(id = resolvedContentId) else item
+        }
+    } else {
+        watchedItems
+    }
     val anchoredEntry = reanchorHomeNextUpCandidate(
         candidate = completedEntry,
         resolvedContentId = resolvedContentId,
@@ -1557,11 +1579,7 @@ private suspend fun resolveHomeNextUpCandidate(
             watchedItems = resolvedWatchedItems,
             preferFurthestEpisode = preferFurthestEpisode,
         ),
-    )
-        // A listing borrowed only to reach past the seed has no history of its own until the
-        // show is watched under that id; the seed still stands on the show's own id meanwhile.
-        ?: completedEntry.takeIf { nextUpMeta.extendsOwnListing }
-        ?: return HomeNextUpResolutionAttempt.conclusiveNone()
+    ) ?: return HomeNextUpResolutionAttempt.conclusiveNone()
     val anchoredContentId = anchoredEntry.content.id
     val resolvedWatchedKeys = resolvedWatchedItems.mapTo(linkedSetOf()) { item ->
         watchedItemKey(item.type, item.id, item.season, item.episode)
