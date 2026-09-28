@@ -103,7 +103,7 @@ object SimklRelatedRepository {
             SimklApiRequest(
                 method = SimklHttpMethod.GET,
                 path = "/$type/$simklId",
-                requiresAuthentication = false,
+                // OAuth 2.0 clients get user_token_required on every request, metadata included.
                 retryPolicy = SimklRetryPolicy.TRANSIENT_FAILURES,
             ),
         )

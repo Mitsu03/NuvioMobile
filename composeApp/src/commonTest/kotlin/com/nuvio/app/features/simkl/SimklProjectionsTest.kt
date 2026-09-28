@@ -368,6 +368,22 @@ class SimklProjectionsTest {
         show = if (type != SimklMediaType.MOVIES) media(id, imdb, mal, slug = slug) else null,
     )
 
+    @Test
+    fun `canonical content id resolves to the earliest matching entry`() {
+        val first = entry(SimklMediaType.ANIME, SimklListStatus.WATCHING, id = 1, imdb = "tt0000001", mal = 10)
+        val second = entry(SimklMediaType.ANIME, SimklListStatus.WATCHING, id = 2, imdb = "tt0000002", mal = 10)
+        val snapshot = SimklSyncSnapshot(entries = listOf(first, second))
+
+        assertEquals(first.media?.canonicalContentId(), snapshot.resolveCanonicalContentId("mal:10"))
+        assertEquals(second.media?.canonicalContentId(), snapshot.resolveCanonicalContentId("TT0000002"))
+        assertEquals(second.media?.canonicalContentId(), snapshot.resolveCanonicalContentId("simkl:2"))
+        assertNull(snapshot.resolveCanonicalContentId("mal:99"))
+        assertNull(snapshot.resolveCanonicalContentId("tt9999999"))
+
+        val reordered = snapshot.copy(entries = listOf(second, first))
+        assertEquals(second.media?.canonicalContentId(), reordered.resolveCanonicalContentId("mal:10"))
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Summary markers: Simkl reports progress without per-episode history.
     // ──────────────────────────────────────────────────────────────────────────

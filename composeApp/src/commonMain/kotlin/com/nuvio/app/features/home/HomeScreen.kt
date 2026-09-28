@@ -41,10 +41,15 @@ import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.CloudLibraryRepository
 import com.nuvio.app.features.cloud.CloudLibraryUiState
 import com.nuvio.app.features.cloud.findPlaybackTargetForProgress
+import com.nuvio.app.features.details.CompletedSeriesEpisode
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.SeriesPrimaryAction
+import com.nuvio.app.features.details.fetchAlternateMeta
+import com.nuvio.app.features.details.fetchMetaQuietly
+import com.nuvio.app.features.details.hasEpisodeAfter
+import com.nuvio.app.features.details.latestCompletedSeriesEpisode
 import com.nuvio.app.features.details.seriesPrimaryAction
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
@@ -1479,6 +1484,43 @@ internal fun shouldSurfaceNextUpForUntrackedSeries(
     return distanceFromNowMs <= NextUpNewReleaseWindowMs
 }
 
+/**
+ * Re-anchors a Next Up candidate onto the content ID its metadata actually came from.
+ *
+ * When no installed addon serves an entry's own ID, [MetaDetailsRepository] falls back to one of
+ * the entry's other IDs - for a Simkl anime season, the franchise IMDB ID it shares through TVDB.
+ * The episode list that comes back is then the whole franchise's, while the candidate's seed was
+ * computed from that one arc's watch history, because the sibling arcs are recorded under the
+ * franchise ID instead. Left unreconciled the seed is the arc's own finale, so Next Up offers the
+ * first episode of the following arc - an episode the user has usually already watched under a
+ * sibling entry.
+ *
+ * Recomputing the seed under [resolvedContentId] puts both halves back on one identity: the
+ * franchise episode list is now read against the franchise watch history. It also collapses the
+ * candidate onto the franchise's own candidate, so one series cannot produce two Next Up cards.
+ *
+ * Returns [candidate] unchanged when no fallback happened, and null when the resolved ID carries
+ * no usable completed episode - there is no seed to offer a next episode from. A season-zero seed
+ * is rejected for the same reason [buildHomeNextUpSeedCandidates] rejects one: specials do not
+ * establish where a viewer is in the run.
+ */
+internal fun reanchorHomeNextUpCandidate(
+    candidate: CompletedSeriesCandidate,
+    resolvedContentId: String?,
+    resolvedLatestCompleted: CompletedSeriesEpisode?,
+): CompletedSeriesCandidate? {
+    val normalizedResolvedId = resolvedContentId?.trim().orEmpty()
+    if (normalizedResolvedId.isEmpty()) return candidate
+    if (normalizedResolvedId.equals(candidate.content.id.trim(), ignoreCase = true)) return candidate
+    if (resolvedLatestCompleted == null || resolvedLatestCompleted.seasonNumber == 0) return null
+    return CompletedSeriesCandidate(
+        content = candidate.content.copy(id = normalizedResolvedId),
+        seasonNumber = resolvedLatestCompleted.seasonNumber,
+        episodeNumber = resolvedLatestCompleted.episodeNumber,
+        markedAtEpochMs = resolvedLatestCompleted.markedAtEpochMs,
+    )
+}
+
 private suspend fun resolveHomeNextUpCandidate(
     completedEntry: CompletedSeriesCandidate,
     watchProgressEntries: List<WatchProgressEntry>,
@@ -1491,19 +1533,56 @@ private suspend fun resolveHomeNextUpCandidate(
     providerOwnsCompletedHistory: Boolean,
 ): HomeNextUpResolutionAttempt {
     val contentId = completedEntry.content.id
-    val meta = fetchHomeNextUpMeta(
+    val nextUpMeta = fetchHomeNextUpMeta(
         contentType = completedEntry.content.type,
         contentId = contentId,
-    )
-    if (meta == null) {
-        return HomeNextUpResolutionAttempt.transientFailure()
-    }
+        seedSeasonNumber = completedEntry.seasonNumber,
+        seedEpisodeNumber = completedEntry.episodeNumber,
+    ) ?: return HomeNextUpResolutionAttempt.transientFailure()
+    val meta = nextUpMeta.meta
 
+    val resolvedContentId = meta.id.takeIf(String::isNotBlank) ?: contentId
+    // A listing borrowed to reach past the seed becomes the show's identity from here on: the
+    // card, the player and the progress it writes all use the borrowed id, which is the one other
+    // devices opening the show from that addon already use. The history recorded under the
+    // show's own id comes along, or the episodes already watched would be offered again.
+    val carriesOwnHistory = nextUpMeta.extendsOwnListing &&
+        !resolvedContentId.equals(contentId, ignoreCase = true)
     val resolvedProgressEntries = WatchProgressRepository.prepareNextUpProgressEntries(
-        entries = watchProgressEntries,
-        contentId = contentId,
+        entries = if (carriesOwnHistory) {
+            watchProgressEntries.map { entry ->
+                if (entry.parentMetaId.equals(contentId, ignoreCase = true)) {
+                    entry.copy(parentMetaId = resolvedContentId)
+                } else {
+                    entry
+                }
+            }
+        } else {
+            watchProgressEntries
+        },
+        contentId = resolvedContentId,
     )
-    val resolvedWatchedItems = watchedItems
+    val resolvedWatchedItems = if (carriesOwnHistory) {
+        watchedItems.map { item ->
+            if (item.id.equals(contentId, ignoreCase = true)) item.copy(id = resolvedContentId) else item
+        }
+    } else {
+        watchedItems
+    }
+    val anchoredEntry = reanchorHomeNextUpCandidate(
+        candidate = completedEntry,
+        resolvedContentId = resolvedContentId,
+        resolvedLatestCompleted = latestCompletedSeriesEpisode(
+            parentMetaId = resolvedContentId,
+            parentMetaType = completedEntry.content.type,
+            progressEntries = resolvedProgressEntries,
+            watchedItems = resolvedWatchedItems,
+            preferFurthestEpisode = preferFurthestEpisode,
+        ),
+    ) ?: return HomeNextUpResolutionAttempt.conclusiveNone()
+    // Results are matched back to the seeds they came from, and a borrowed id has no seed of its
+    // own until the show is watched under it, so the result stays filed under the seed's id.
+    val anchoredContentId = if (carriesOwnHistory) contentId else anchoredEntry.content.id
     val resolvedWatchedKeys = resolvedWatchedItems.mapTo(linkedSetOf()) { item ->
         watchedItemKey(item.type, item.id, item.season, item.episode)
     }
@@ -1525,7 +1604,7 @@ private suspend fun resolveHomeNextUpCandidate(
     }
 
     val action = meta.seriesPrimaryAction(
-        content = completedEntry.content,
+        content = anchoredEntry.content,
         entries = resolvedProgressEntries,
         watchedItems = resolvedWatchedItems,
         todayIsoDate = todayIsoDate,
@@ -1554,7 +1633,7 @@ private suspend fun resolveHomeNextUpCandidate(
         return HomeNextUpResolutionAttempt.conclusiveNone()
     }
     val metadataDecision = classifyHomeNextUpCandidateMetadata(
-        freshItem = completedEntry.toContinueWatchingSeed(meta)
+        freshItem = anchoredEntry.toContinueWatchingSeed(meta)
             .toUpNextContinueWatchingItem(nextEpisode),
         cachedFallbackItem = cachedFallbackItem,
         dismissedNextUpKeys = dismissedNextUpKeys,
@@ -1568,12 +1647,12 @@ private suspend fun resolveHomeNextUpCandidate(
     }
 
     val sortTimestamp = if (item.isReleaseAlert) {
-        com.nuvio.app.features.watchprogress.parseReleaseDateToEpochMs(item.released) ?: completedEntry.markedAtEpochMs
+        com.nuvio.app.features.watchprogress.parseReleaseDateToEpochMs(item.released) ?: anchoredEntry.markedAtEpochMs
     } else {
-        completedEntry.markedAtEpochMs
+        anchoredEntry.markedAtEpochMs
     }
     return HomeNextUpResolutionAttempt.success(
-        contentId to (sortTimestamp to item),
+        anchoredContentId to (sortTimestamp to item),
     )
 }
 
@@ -1583,25 +1662,41 @@ private suspend fun resolveHomeNextUpCandidate(
  * A tracker gives each season or cour of a franchise its own ids, and the one currently airing
  * often carries an id no installed meta addon answers for. Without a fallback the candidate fails
  * to resolve and the show simply stops appearing in Continue Watching, even though the tracker
- * still lists it as being watched.
+ * still lists it as being watched. While it does, a source listing episodes past the seed is
+ * preferred over one that answers with the seed as its last episode.
  */
 private suspend fun fetchHomeNextUpMeta(
     contentType: String,
     contentId: String,
-): MetaDetails? {
-    suspend fun fetch(id: String): MetaDetails? = try {
-        MetaDetailsRepository.fetch(type = contentType, id = id)
-    } catch (error: Throwable) {
-        if (error is CancellationException) throw error
-        null
+    seedSeasonNumber: Int,
+    seedEpisodeNumber: Int,
+): HomeNextUpMeta? {
+    val primary = fetchMetaQuietly(contentType, contentId)
+    if (
+        primary != null &&
+        (primary.hasEpisodeAfter(seedSeasonNumber, seedEpisodeNumber) ||
+            !WatchProgressRepository.isTrackedAsWatching(contentId))
+    ) {
+        return HomeNextUpMeta(primary, extendsOwnListing = false)
     }
-
-    fetch(contentId)?.let { return it }
-    for (alternateId in WatchProgressRepository.alternateContentIdsForMetadata(contentId)) {
-        fetch(alternateId)?.let { return it }
+    val alternate = fetchAlternateMeta(contentType, contentId) { alternate ->
+        primary == null || alternate.hasEpisodeAfter(seedSeasonNumber, seedEpisodeNumber)
     }
-    return null
+    return when {
+        alternate != null -> HomeNextUpMeta(alternate, extendsOwnListing = primary != null)
+        primary != null -> HomeNextUpMeta(primary, extendsOwnListing = false)
+        else -> null
+    }
 }
+
+/**
+ * [extendsOwnListing] marks metadata borrowed from an alternate id although the show's own id
+ * answered, because its listing ended at the seed.
+ */
+private class HomeNextUpMeta(
+    val meta: MetaDetails,
+    val extendsOwnListing: Boolean,
+)
 
 private fun MetaDetails.videoForSeriesAction(action: SeriesPrimaryAction): MetaVideo? {
     if (action.seasonNumber != null && action.episodeNumber != null) {
