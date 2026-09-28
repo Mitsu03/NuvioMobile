@@ -1580,7 +1580,9 @@ private suspend fun resolveHomeNextUpCandidate(
             preferFurthestEpisode = preferFurthestEpisode,
         ),
     ) ?: return HomeNextUpResolutionAttempt.conclusiveNone()
-    val anchoredContentId = anchoredEntry.content.id
+    // Results are matched back to the seeds they came from, and a borrowed id has no seed of its
+    // own until the show is watched under it, so the result stays filed under the seed's id.
+    val anchoredContentId = if (carriesOwnHistory) contentId else anchoredEntry.content.id
     val resolvedWatchedKeys = resolvedWatchedItems.mapTo(linkedSetOf()) { item ->
         watchedItemKey(item.type, item.id, item.season, item.episode)
     }
