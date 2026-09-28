@@ -16,6 +16,7 @@ import com.nuvio.app.features.watchprogress.WatchProgressEntry
 import com.nuvio.app.features.watchprogress.WatchProgressSourceSimklPlayback
 import com.nuvio.app.features.watchprogress.WatchProgressSourceSimklShowProgress
 import com.nuvio.app.features.watchprogress.buildPlaybackVideoId
+import kotlin.concurrent.Volatile
 import kotlin.math.abs
 
 internal data class SimklWatchedProjection(
@@ -756,9 +757,61 @@ private fun TrackingMediaReference.stripAnimeIdsIfSeasoned(): TrackingMediaRefer
  * e.g. "mal:123" → finds entry with mal=123 → returns "tt2560140" (its IMDB/canonical ID)
  */
 internal fun SimklSyncSnapshot.resolveCanonicalContentId(contentId: String): String? {
-    val entry = entries.firstOrNull { it.matchesContentId(contentId) }
-    return entry?.media?.canonicalContentId()
+    val preference = TrackingSettingsRepository.uiState.value.simklAnimeIdPreference
+    val index = canonicalIdIndex?.takeIf { it.entries === entries && it.preference == preference }
+        ?: SimklCanonicalIdIndex(entries, preference).also { canonicalIdIndex = it }
+    return index.resolve(contentId)
 }
+
+/**
+ * The home screen resolves every progress row and watched item through
+ * [resolveCanonicalContentId] while composing, so a scan of [SimklSyncSnapshot.entries] per
+ * call froze the main thread on large libraries. Built once per entries list, it answers what
+ * `entries.firstOrNull { it.matchesContentId(contentId) }` would: the earliest entry whose
+ * canonical id or any external id matches.
+ */
+private class SimklCanonicalIdIndex(
+    val entries: List<SimklLibraryEntry>,
+    val preference: SimklAnimeIdPreference,
+) {
+    private val canonicalIds = arrayOfNulls<String>(entries.size)
+    private val firstEntryByKey = HashMap<String, Int>()
+
+    init {
+        entries.forEachIndexed { position, entry ->
+            val media = entry.media ?: return@forEachIndexed
+            val canonicalId = media.canonicalContentId(preference)
+            canonicalIds[position] = canonicalId
+            canonicalId?.let { firstEntryByKey.getOrPut(canonicalKey(it)) { position } }
+            media.toTrackingExternalIds().identityKeys().forEach { key ->
+                firstEntryByKey.getOrPut(key) { position }
+            }
+        }
+    }
+
+    fun resolve(contentId: String): String? {
+        val candidates = parseTrackingExternalIds(contentId).identityKeys() + canonicalKey(contentId)
+        val position = candidates.mapNotNull(firstEntryByKey::get).minOrNull() ?: return null
+        return canonicalIds[position]
+    }
+
+    private fun canonicalKey(contentId: String): String = "canonical|${contentId.lowercase()}"
+}
+
+@Volatile
+private var canonicalIdIndex: SimklCanonicalIdIndex? = null
+
+/** The ids [SimklLibraryEntry.matchesContentId] compares, text ids case-folded as it does. */
+private fun TrackingExternalIds.identityKeys(): List<String> = listOfNotNull(
+    simkl?.let { "simkl|$it" },
+    imdb?.takeIf(String::isNotBlank)?.let { "imdb|${it.lowercase()}" },
+    tmdb?.let { "tmdb|$it" },
+    tvdb?.takeIf(String::isNotBlank)?.let { "tvdb|${it.lowercase()}" },
+    mal?.let { "mal|$it" },
+    anidb?.let { "anidb|$it" },
+    anilist?.let { "anilist|$it" },
+    kitsu?.let { "kitsu|$it" },
+)
 
 /**
  * Check if an episode is watched by resolving through the video ID.
