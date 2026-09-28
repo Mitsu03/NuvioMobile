@@ -7,6 +7,9 @@ import com.nuvio.app.features.cloud.CloudLibraryProviderState
 import com.nuvio.app.features.cloud.CloudLibraryUiState
 import com.nuvio.app.features.cloud.playbackVideoId
 import com.nuvio.app.features.debrid.DebridProviders
+import com.nuvio.app.features.details.MetaDetails
+import com.nuvio.app.features.details.MetaVideo
+import com.nuvio.app.features.details.hasEpisodeAfter
 import com.nuvio.app.features.watchprogress.CachedInProgressItem
 import com.nuvio.app.features.watchprogress.CachedNextUpItem
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
@@ -27,6 +30,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HomeScreenTest {
+
+    @Test
+    fun `next up metadata only counts episodes after the seed`() {
+        fun meta(vararg episodes: Pair<Int?, Int?>) = MetaDetails(
+            id = "tt43691353",
+            type = "series",
+            name = "Overgeared",
+            videos = episodes.map { (season, episode) ->
+                MetaVideo(id = "tt43691353:$season:$episode", title = "", season = season, episode = episode)
+            },
+        )
+
+        assertFalse(meta(1 to 1).hasEpisodeAfter(seasonNumber = 1, episodeNumber = 1))
+        assertFalse(meta(0 to 5, 1 to 1).hasEpisodeAfter(seasonNumber = 1, episodeNumber = 1))
+        assertFalse(meta(null to null).hasEpisodeAfter(seasonNumber = 1, episodeNumber = 1))
+        assertTrue(meta(1 to 1, 1 to 2).hasEpisodeAfter(seasonNumber = 1, episodeNumber = 1))
+        assertTrue(meta(1 to 12, 2 to 1).hasEpisodeAfter(seasonNumber = 1, episodeNumber = 12))
+    }
 
     @Test
     fun `home remains loading while initial addon manifests are pending`() {

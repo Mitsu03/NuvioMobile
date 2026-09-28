@@ -45,6 +45,9 @@ import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.SeriesPrimaryAction
+import com.nuvio.app.features.details.fetchAlternateMeta
+import com.nuvio.app.features.details.fetchMetaQuietly
+import com.nuvio.app.features.details.hasEpisodeAfter
 import com.nuvio.app.features.details.seriesPrimaryAction
 import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
@@ -1494,6 +1497,8 @@ private suspend fun resolveHomeNextUpCandidate(
     val meta = fetchHomeNextUpMeta(
         contentType = completedEntry.content.type,
         contentId = contentId,
+        seedSeasonNumber = completedEntry.seasonNumber,
+        seedEpisodeNumber = completedEntry.episodeNumber,
     )
     if (meta == null) {
         return HomeNextUpResolutionAttempt.transientFailure()
@@ -1583,24 +1588,26 @@ private suspend fun resolveHomeNextUpCandidate(
  * A tracker gives each season or cour of a franchise its own ids, and the one currently airing
  * often carries an id no installed meta addon answers for. Without a fallback the candidate fails
  * to resolve and the show simply stops appearing in Continue Watching, even though the tracker
- * still lists it as being watched.
+ * still lists it as being watched. While it does, a source listing episodes past the seed is
+ * preferred over one that answers with the seed as its last episode.
  */
 private suspend fun fetchHomeNextUpMeta(
     contentType: String,
     contentId: String,
+    seedSeasonNumber: Int,
+    seedEpisodeNumber: Int,
 ): MetaDetails? {
-    suspend fun fetch(id: String): MetaDetails? = try {
-        MetaDetailsRepository.fetch(type = contentType, id = id)
-    } catch (error: Throwable) {
-        if (error is CancellationException) throw error
-        null
+    val primary = fetchMetaQuietly(contentType, contentId)
+    if (
+        primary != null &&
+        (primary.hasEpisodeAfter(seedSeasonNumber, seedEpisodeNumber) ||
+            !WatchProgressRepository.isTrackedAsWatching(contentId))
+    ) {
+        return primary
     }
-
-    fetch(contentId)?.let { return it }
-    for (alternateId in WatchProgressRepository.alternateContentIdsForMetadata(contentId)) {
-        fetch(alternateId)?.let { return it }
-    }
-    return null
+    return fetchAlternateMeta(contentType, contentId) { alternate ->
+        primary == null || alternate.hasEpisodeAfter(seedSeasonNumber, seedEpisodeNumber)
+    } ?: primary
 }
 
 private fun MetaDetails.videoForSeriesAction(action: SeriesPrimaryAction): MetaVideo? {

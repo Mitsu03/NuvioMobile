@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.details.fetchAlternateMeta
+import com.nuvio.app.features.details.hasEpisodeAfter
 import com.nuvio.app.features.p2p.P2pSettingsRepository
 import com.nuvio.app.features.p2p.P2pStreamRequest
 import com.nuvio.app.features.p2p.P2pStreamingEngine
@@ -58,6 +60,19 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
             playerMeta = currentMeta
             playerMetaVideos = currentMeta.videos
         }
+    }
+
+    // Home can start an episode from an alternate id's metadata when the show's own listing ends
+    // early (see fetchAlternateMeta); without the same fallback here there is no next episode.
+    LaunchedEffect(playerMetaVideos, activeSeasonNumber, activeEpisodeNumber) {
+        val season = activeSeasonNumber ?: return@LaunchedEffect
+        val episode = activeEpisodeNumber ?: return@LaunchedEffect
+        if (!isSeries || playerMetaVideos.isEmpty()) return@LaunchedEffect
+        if (playerMetaVideos.hasEpisodeAfter(season, episode)) return@LaunchedEffect
+        if (!WatchProgressRepository.isTrackedAsWatching(parentMetaId)) return@LaunchedEffect
+        fetchAlternateMeta(parentMetaType, parentMetaId) { alternate ->
+            alternate.hasEpisodeAfter(season, episode)
+        }?.let { alternate -> playerMetaVideos = alternate.videos }
     }
 
     LaunchedEffect(currentStreamBingeGroup, parentMetaId) {
