@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.NuvioTokens
 import com.nuvio.app.core.ui.nuvio
+import com.nuvio.app.features.player.autosync.AutoSyncPreferences
 import com.nuvio.app.isIos
 import com.nuvio.app.supportsPosterNavigationMotion
 import nuvio.composeapp.generated.resources.*
@@ -509,6 +510,7 @@ internal fun settingsSearchEntries(
     val playbackStreamAutoPlay = stringResource(Res.string.settings_playback_section_stream_auto_play)
     val playbackDecoder = stringResource(Res.string.settings_playback_section_decoder)
     val playbackSubtitleRendering = stringResource(Res.string.settings_playback_section_subtitle_rendering)
+    val playbackSubtitleAutoSync = stringResource(Res.string.settings_playback_section_subtitle_auto_sync)
     val playbackSkipSegments = stringResource(Res.string.settings_playback_section_skip_segments)
     val playbackNextEpisode = stringResource(Res.string.settings_playback_section_next_episode)
     addRow(
@@ -661,6 +663,17 @@ internal fun settingsSearchEntries(
             rows = listOf(
                 PlaybackSearchRow("libass", stringResource(Res.string.settings_playback_enable_libass), stringResource(Res.string.settings_playback_enable_libass_description)),
                 PlaybackSearchRow("libass-render", stringResource(Res.string.settings_playback_render_type)),
+            ),
+        )
+    }
+    if (AutoSyncPreferences.isSupported) {
+        addPlaybackRows(
+            addRow = ::addRow,
+            pageLabel = playbackPage,
+            section = playbackSubtitleAutoSync,
+            icon = Icons.Rounded.PlayArrow,
+            rows = listOf(
+                PlaybackSearchRow("auto-sync", stringResource(Res.string.settings_playback_auto_sync), stringResource(Res.string.settings_playback_auto_sync_description)),
             ),
         )
     }

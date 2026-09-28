@@ -2171,6 +2171,9 @@
     <string name="network_please_check_connection">Please check your connection and try again.</string>
     <string name="network_request_failed_http">Request failed with HTTP %1$d</string>
     <string name="player_addon_subtitle_display_format">%1$s (%2$s)</string>
+    <string name="player_auto_sync_applied">Subtitles synced automatically (%1$s) ✅</string>
+    <string name="player_auto_sync_failed">Couldn't sync these subtitles automatically ❌</string>
+    <string name="player_auto_sync_running">Syncing subtitles…</string>
     <string name="player_error_mpv_unavailable">MPV player engine not available. Please rebuild the app.</string>
     <string name="player_error_unable_to_play_stream">Unable to play this stream.</string>
     <string name="plugins_badge_disabled">Plugins disabled</string>
@@ -2333,6 +2336,8 @@
     <string name="settings_playback_auto_skip_outro_description">Skip outros and anime endings automatically.</string>
     <string name="settings_playback_auto_skip_movie_credits">End Credits</string>
     <string name="settings_playback_auto_skip_movie_credits_description">Skip movie credits, keeping post-credits scenes.</string>
+    <string name="settings_playback_auto_sync">Automatic subtitle sync</string>
+    <string name="settings_playback_auto_sync_description">When you pick an addon subtitle, measure how far it drifts from the video’s own subtitle track and correct it automatically.</string>
     <string name="player_skip_movie_credits">Skip Credits</string>
     <string name="player_skip_to_post_credits">Skip to Post-Credits</string>
     <string name="layout_overall_ratings">Overall Ratings</string>
@@ -2345,6 +2350,7 @@
     <string name="layout_ratings_hide_unwatched">Hide Unwatched</string>
     <string name="settings_playback_legacy_layout">Legacy layout</string>
     <string name="settings_playback_legacy_layout_description">Use the original player controls.</string>
+    <string name="settings_playback_section_subtitle_auto_sync">SUBTITLE AUTO SYNC</string>
     <string name="compose_player_via">Via %1$s</string>
     <string name="compose_player_episode_code">S%1$d E%2$d</string>
     <string name="compose_player_more_actions">More controls</string>

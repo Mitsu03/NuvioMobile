@@ -180,6 +180,8 @@ internal fun PlayerScreenRuntime.refreshTracks() {
     if (subtitlePreferenceReady && (preferredAudioSelectionApplied || audioTracks.isEmpty())) {
         tryAutoSelectPreferredSubtitleFromAvailableTracks(preferredAudioTargets)
     }
+
+    maybeRunAutomaticSubtitleSync()
 }
 
 private fun PlayerScreenRuntime.tryAutoSelectPreferredSubtitleFromAvailableTracks(
