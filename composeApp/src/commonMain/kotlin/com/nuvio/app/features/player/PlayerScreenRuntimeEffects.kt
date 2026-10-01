@@ -203,6 +203,15 @@ internal fun PlayerScreenRuntime.BindPlayerRuntimeEffects() {
         playerController?.setSubtitleDelayMs(subtitleDelayMs)
     }
 
+    // A source change (next episode, another stream) builds a new controller at 1x;
+    // carry the speed the user picked over once the new source has loaded.
+    LaunchedEffect(playerController, initialLoadCompleted) {
+        val controller = playerController ?: return@LaunchedEffect
+        if (!initialLoadCompleted || speedBoostRestoreSpeed != null) return@LaunchedEffect
+        if (kotlin.math.abs(playbackSnapshot.playbackSpeed - selectedPlaybackSpeed) < 0.01f) return@LaunchedEffect
+        controller.setPlaybackSpeed(selectedPlaybackSpeed)
+    }
+
     LaunchedEffect(selectedAddonSubtitleId, useCustomSubtitles, activeSourceUrl) {
         subtitleAutoSyncState = SubtitleAutoSyncUiState()
     }
