@@ -4,10 +4,12 @@
 # hand-zips a Payload directory, which is fine for an artifact you sideload but is rejected
 # by App Store Connect.
 #
-# Signing assets are not baked into the repo or into CI secrets. Given an App Store Connect
-# API key, xcodebuild -allowProvisioningUpdates fetches the team's managed distribution
-# certificate and creates the provisioning profiles it needs, so there is no .p12 to rotate
-# and no profile to regenerate whenever an identifier changes.
+# Given an App Store Connect API key, xcodebuild -allowProvisioningUpdates fetches the
+# team's managed distribution certificate and creates the provisioning profiles it needs,
+# so there is no distribution .p12 and no profile to regenerate whenever an identifier
+# changes. The archive itself is signed with an Apple Development identity: locally that
+# is the one in the login keychain; in CI the workflow imports a fixed one from secrets,
+# because without it Apple issues a new development certificate on every run.
 
 set -euo pipefail
 
