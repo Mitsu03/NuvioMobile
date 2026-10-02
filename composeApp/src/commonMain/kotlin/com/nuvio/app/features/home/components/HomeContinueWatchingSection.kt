@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.nuvio.app.features.shuffle.ShuffleBadge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -291,7 +292,7 @@ internal fun ContinueWatchingItem.shouldBlurContinueWatchingArtwork(
     useEpisodeThumbnails: Boolean,
     artworkUrl: String?,
 ): Boolean {
-    if (!blurUnwatchedEpisodes || !useEpisodeThumbnails) return false
+    if (!blurUnwatchedEpisodes || !useEpisodeThumbnails || isWatched) return false
     val thumbnail = episodeThumbnail?.trim()?.takeIf { it.isNotBlank() } ?: return false
     val artwork = artworkUrl?.trim()?.takeIf { it.isNotBlank() } ?: return false
     val isUnwatched = isNextUp || progressFraction < WatchProgressCompletionPercentThreshold / 100f
@@ -797,6 +798,7 @@ private fun ContinueWatchingCard(
                 contentScale = ContentScale.Crop,
             )
         }
+        if (item.shufflePlayback) ShuffleBadge(Modifier.align(Alignment.TopStart).padding(8.dp))
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -992,6 +994,7 @@ private fun ContinueWatchingWideCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (item.shufflePlayback) ShuffleBadge()
                     if (item.progressFraction <= 0f && item.seasonNumber != null && item.episodeNumber != null) {
                         val todayIsoDate = CurrentDateProvider.todayIsoDate()
                         val badgeText = when {
@@ -1113,6 +1116,7 @@ private fun ContinueWatchingPosterCard(
                     contentScale = if (item.isCloudLibraryItem()) ContentScale.Fit else ContentScale.Crop,
                 )
             }
+            if (item.shufflePlayback) ShuffleBadge(Modifier.align(Alignment.TopStart).padding(8.dp))
             if (item.progressFraction <= 0f && item.seasonNumber != null && item.episodeNumber != null) {
                 Box(
                     modifier = Modifier
