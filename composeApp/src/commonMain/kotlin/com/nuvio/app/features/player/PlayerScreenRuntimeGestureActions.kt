@@ -253,7 +253,9 @@ internal fun PlayerScreenRuntime.activateHoldToSpeed() {
     if (abs(currentSpeed - targetSpeed) < 0.01f) return
 
     isHoldToSpeedGestureActive = true
-    speedBoostRestoreSpeed = currentSpeed
+    // Return to the picked speed, not the current one: while a new source loads the
+    // controller is still at 1x and the picked speed has not been re-applied yet.
+    speedBoostRestoreSpeed = selectedPlaybackSpeed
     controller.setPlaybackSpeed(targetSpeed)
     liveGestureFeedback = GestureFeedbackState(
         message = formatPlaybackSpeedLabel(targetSpeed),
