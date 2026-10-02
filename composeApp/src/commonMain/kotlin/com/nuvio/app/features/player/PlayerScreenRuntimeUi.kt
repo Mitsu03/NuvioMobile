@@ -14,6 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import com.nuvio.app.features.filler.fillerTaggedTitle
+import com.nuvio.app.features.filler.isFiller
+import com.nuvio.app.features.filler.rememberFillerEpisodeKeys
 import com.nuvio.app.features.p2p.P2pStreamingState
 import com.nuvio.app.features.p2p.formatP2pMegabytes
 import com.nuvio.app.features.p2p.formatP2pSpeed
@@ -28,6 +31,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
     val isInPip = rememberIsInPictureInPicture()
     val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
     val isEpisode = activeSeasonNumber != null && activeEpisodeNumber != null
+    val displayedEpisodeTitle = displayedEpisodeTitle(rememberFillerEpisodeKeys(playerMeta))
     val currentGestureFeedback = liveGestureFeedback ?: gestureFeedback
     val isP2pPlaybackActive = activeTorrentInfoHash != null
     val p2pConnecting = p2pStreamingState as? P2pStreamingState.Connecting
@@ -213,7 +217,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 isEpisode = isEpisode,
                 seasonNumber = activeSeasonNumber,
                 episodeNumber = activeEpisodeNumber,
-                episodeTitle = activeEpisodeTitle,
+                episodeTitle = displayedEpisodeTitle,
                 pauseDescription = activePauseDescription ?: activeStreamSubtitle,
                 providerName = activeProviderName,
                 metrics = metrics,
@@ -258,6 +262,7 @@ private fun PlayerScreenRuntime.currentInitialPositionRequestKey(): String? {
 @Composable
 private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
     val isInPip = rememberIsInPictureInPicture()
+    val displayedEpisodeTitle = displayedEpisodeTitle(rememberFillerEpisodeKeys(playerMeta))
     AnimatedVisibility(
         visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
         enter = fadeIn(),
@@ -269,7 +274,7 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             providerName = activeProviderName,
             seasonNumber = activeSeasonNumber,
             episodeNumber = activeEpisodeNumber,
-            episodeTitle = activeEpisodeTitle,
+            episodeTitle = displayedEpisodeTitle,
             playbackSnapshot = playbackSnapshot,
             displayedPositionMs = displayedPositionMs,
             metrics = metrics,
@@ -438,7 +443,10 @@ private fun BoxScope.RenderPlaybackOverlays(
         sliderEdgePadding = sliderEdgePadding,
         overlayBottomPadding = overlayBottomPadding,
         isSeries = isSeries,
-        nextEpisodeInfo = nextEpisodeInfo,
+        nextEpisodeInfo = nextEpisodeInfo?.let { next ->
+            val isFiller = rememberFillerEpisodeKeys(playerMeta).isFiller(next.season, next.episode)
+            next.copy(title = fillerTaggedTitle(next.title, isFiller))
+        },
         showNextEpisodeCard = showNextEpisodeCard,
         nextEpisodeAutoPlaySearching = nextEpisodeAutoPlaySearching,
         nextEpisodeAutoPlaySourceName = nextEpisodeAutoPlaySourceName,
@@ -569,6 +577,7 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         watchProgressByVideoId = watchProgressUiState.byVideoIdForContent(parentMetaId),
         watchedKeys = watchedUiState.watchedKeys,
         blurUnwatchedEpisodes = metaScreenSettingsUiState.blurUnwatchedEpisodes,
+        fillerEpisodes = rememberFillerEpisodeKeys(playerMeta),
         episodeStreamsPanelState = episodeStreamsPanelState,
         episodeStreamsRepoState = episodeStreamsRepoState,
         onEpisodeSelectedForDownload = { episode ->
@@ -629,4 +638,11 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             showSubmitIntroModal = false
         },
     )
+}
+
+/** The active episode title as shown on screen; the filler tag never reaches progress, trackers or presence. */
+@Composable
+private fun PlayerScreenRuntime.displayedEpisodeTitle(fillerEpisodes: Set<Pair<Int, Int>>): String? {
+    val title = activeEpisodeTitle?.takeIf { it.isNotBlank() } ?: return activeEpisodeTitle
+    return fillerTaggedTitle(title, fillerEpisodes.isFiller(activeSeasonNumber, activeEpisodeNumber))
 }

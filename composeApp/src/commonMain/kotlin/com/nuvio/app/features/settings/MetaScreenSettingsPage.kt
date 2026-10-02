@@ -35,6 +35,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +45,7 @@ import nuvio.composeapp.generated.resources.random_episode_title
 import nuvio.composeapp.generated.resources.layout_random_episode_sub
 import nuvio.composeapp.generated.resources.shuffle_save_failed
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +66,7 @@ import com.nuvio.app.features.details.MetaScreenSectionKey
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import com.nuvio.app.features.details.MetaScreenSettingsUiState
 import com.nuvio.app.supportsPosterNavigationMotion
+import com.nuvio.app.features.filler.FillerEpisodeRepository
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_reorder
 import nuvio.composeapp.generated.resources.action_reset
@@ -91,6 +94,8 @@ import nuvio.composeapp.generated.resources.settings_meta_episodes
 import nuvio.composeapp.generated.resources.settings_meta_episodes_description
 import nuvio.composeapp.generated.resources.settings_meta_blur_unwatched_episodes
 import nuvio.composeapp.generated.resources.settings_meta_blur_unwatched_episodes_description
+import nuvio.composeapp.generated.resources.settings_meta_filler_episodes
+import nuvio.composeapp.generated.resources.settings_meta_filler_episodes_description
 import nuvio.composeapp.generated.resources.settings_meta_background_mode
 import nuvio.composeapp.generated.resources.settings_meta_background_mode_cinematic
 import nuvio.composeapp.generated.resources.settings_meta_background_mode_cinematic_description
@@ -206,6 +211,16 @@ internal fun LazyListScope.metaScreenSettingsContent(
                     checked = uiState.blurUnwatchedEpisodes,
                     isTablet = isTablet,
                     onCheckedChange = { MetaScreenSettingsRepository.setBlurUnwatchedEpisodes(it) },
+                )
+                SettingsGroupDivider(isTablet = isTablet)
+                remember { FillerEpisodeRepository.ensureLoaded() }
+                val tagFillerEpisodes by FillerEpisodeRepository.enabled.collectAsState()
+                SettingsSwitchRow(
+                    title = stringResource(Res.string.settings_meta_filler_episodes),
+                    description = stringResource(Res.string.settings_meta_filler_episodes_description),
+                    checked = tagFillerEpisodes,
+                    isTablet = isTablet,
+                    onCheckedChange = { FillerEpisodeRepository.setEnabled(it) },
                 )
             }
         }

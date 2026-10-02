@@ -111,6 +111,9 @@ import com.nuvio.app.features.details.components.SeasonWatchedActionSheet
 import com.nuvio.app.features.details.components.TabletDetailBackdrop
 import com.nuvio.app.features.details.components.TabletDetailHero
 import com.nuvio.app.features.details.components.TrailerPlayerPopup
+import com.nuvio.app.features.filler.fillerTaggedTitle
+import com.nuvio.app.features.filler.isFiller
+import com.nuvio.app.features.filler.rememberFillerEpisodeKeys
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.mdblist.MdbListSettingsRepository
 import com.nuvio.app.features.library.LibraryRepository
@@ -1385,6 +1388,8 @@ fun MetaDetailsScreen(
                             }
                             EpisodeWatchedActionSheet(
                                 episode = selectedEpisode,
+                                isFiller = rememberFillerEpisodeKeys(meta)
+                                    .isFiller(selectedEpisode.season, selectedEpisode.episode),
                                 seasonLabel = selectedEpisode.season?.let {
                                     stringResource(Res.string.episodes_season, it)
                                 } ?: stringResource(Res.string.episodes_specials),
@@ -1669,7 +1674,10 @@ fun MetaDetailsScreen(
             } ?: stringResource(Res.string.episodes_specials)
             NuvioPosterZoomActionOverlay(
                 imageUrl = zoomAnchor.imageUrl ?: selectedEpisode.thumbnail ?: meta.background ?: meta.poster,
-                title = selectedEpisode.title,
+                title = fillerTaggedTitle(
+                    selectedEpisode.title,
+                    rememberFillerEpisodeKeys(meta).isFiller(selectedEpisode.season, selectedEpisode.episode),
+                ),
                 subtitle = localizedSeasonEpisodeCode(selectedEpisode.season, selectedEpisode.episode) ?: seasonLabel,
                 isWatched = isSelectedEpisodeWatched,
                 blurred = metaScreenSettingsUiState.blurUnwatchedEpisodes && !isSelectedEpisodeWatched,
