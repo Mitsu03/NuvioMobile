@@ -11,6 +11,7 @@ import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.filterReleasedItems
 import com.nuvio.app.features.mdblist.MdbListMetadataService
 import com.nuvio.app.features.mdblist.MdbListSettingsRepository
+import com.nuvio.app.features.simkl.SimklEpisodeReleaseDates
 import com.nuvio.app.features.tmdb.TmdbMetadataService
 import com.nuvio.app.features.tmdb.TmdbService
 import com.nuvio.app.features.tmdb.TmdbSettingsRepository
@@ -210,18 +211,26 @@ object MetaDetailsRepository {
                 tryFetchMeta(manifest, type, metaLookupId, includeMdbList = false)
             }
             if (result != null) {
-                if (cacheResult) {
-                    cachedMetaByRequestKey[requestKey] = CachedMetaEntry(baseMeta = result)
-                }
-                return result
+                return cacheFetched(requestKey, result, fallbackItemId = metaLookupId, cacheResult)
             }
         }
 
-        return tryFetchTmdbFallbackMeta(type = type, id = id)?.also { result ->
-            if (cacheResult) {
-                cachedMetaByRequestKey[requestKey] = CachedMetaEntry(baseMeta = result)
-            }
+        return tryFetchTmdbFallbackMeta(type = type, id = id)?.let { result ->
+            cacheFetched(requestKey, result, fallbackItemId = id, cacheResult)
         }
+    }
+
+    private suspend fun cacheFetched(
+        requestKey: String,
+        meta: MetaDetails,
+        fallbackItemId: String,
+        cacheResult: Boolean,
+    ): MetaDetails {
+        val dated = withSimklReleaseDates(meta = meta, fallbackItemId = fallbackItemId)
+        if (cacheResult) {
+            cachedMetaByRequestKey[requestKey] = CachedMetaEntry(baseMeta = dated)
+        }
+        return dated
     }
 
     private const val FETCH_TIMEOUT_MS = 5_000L
@@ -236,6 +245,7 @@ object MetaDetailsRepository {
     private const val METADATA_PROVIDER_READY_TIMEOUT_MS = 10_000L
     private const val TMDB_ENRICH_TIMEOUT_MS = 5_000L
     private const val MDBLIST_ENRICH_TIMEOUT_MS = 5_000L
+    private const val SIMKL_RELEASE_DATES_TIMEOUT_MS = 3_000L
 
     private suspend fun tryFetchMeta(
         manifest: AddonManifest,
@@ -346,6 +356,16 @@ object MetaDetailsRepository {
             )
         }
 
+    /**
+     * Runs on a meta that is already loaded, outside the per-addon fetch budget, so a slow Simkl
+     * lookup can only cost the corrected dates and never the meta. It comes after TMDB, whose
+     * release dates are then the ones compared against Simkl's.
+     */
+    private suspend fun withSimklReleaseDates(meta: MetaDetails, fallbackItemId: String): MetaDetails =
+        withTimeoutOrNull(SIMKL_RELEASE_DATES_TIMEOUT_MS) {
+            SimklEpisodeReleaseDates.enrichMeta(meta = meta, fallbackItemId = fallbackItemId)
+        } ?: meta
+
     private suspend fun publishLoadedMeta(
         requestKey: String,
         meta: MetaDetails,
@@ -354,23 +374,26 @@ object MetaDetailsRepository {
         mdbListSettings: com.nuvio.app.features.mdblist.MdbListSettings,
         metaScreenSettingsFingerprint: String,
     ) {
-        val cachedEntry = CachedMetaEntry(baseMeta = meta)
+        val datedMeta = withContext(Dispatchers.Default) {
+            withSimklReleaseDates(meta = meta, fallbackItemId = fallbackItemId)
+        }
+        val cachedEntry = CachedMetaEntry(baseMeta = datedMeta)
         cachedMetaByRequestKey[requestKey] = cachedEntry
 
-        if (!shouldEnrichForMetaScreen(meta, fallbackItemId, mdbListSettings)) {
-            _uiState.value = MetaDetailsUiState(meta = meta.withUnreleasedFilter())
+        if (!shouldEnrichForMetaScreen(datedMeta, fallbackItemId, mdbListSettings)) {
+            _uiState.value = MetaDetailsUiState(meta = datedMeta.withUnreleasedFilter())
             activeRequestKey = requestKey
             return
         }
 
         _uiState.value = MetaDetailsUiState(
             isLoading = true,
-            meta = meta,
+            meta = datedMeta,
         )
         val enrichedMeta = withContext(Dispatchers.Default) {
             enrichForMetaScreen(
                 requestKey = requestKey,
-                meta = meta,
+                meta = datedMeta,
                 fallbackItemId = fallbackItemId,
                 fallbackItemType = fallbackItemType,
                 settings = mdbListSettings,
