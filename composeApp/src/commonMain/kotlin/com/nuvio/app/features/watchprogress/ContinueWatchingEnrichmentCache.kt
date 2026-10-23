@@ -66,11 +66,13 @@ internal fun CachedInProgressItem.resolvedProgressKey(): String =
 
 @Serializable
 private data class CachedEnrichmentPayload(
+    val version: Int = 0,
     val nextUp: List<CachedNextUpItem> = emptyList(),
     val inProgress: List<CachedInProgressItem> = emptyList(),
 )
 
 internal object ContinueWatchingEnrichmentCache {
+    private const val currentVersion = 1
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -114,7 +116,11 @@ internal object ContinueWatchingEnrichmentCache {
     ): Boolean = synchronized(cacheLock) {
         if (generation != _generation.value) return@synchronized false
 
-        val payload = CachedEnrichmentPayload(nextUp = nextUp.toList(), inProgress = inProgress.toList())
+        val payload = CachedEnrichmentPayload(
+            version = currentVersion,
+            nextUp = nextUp.toList(),
+            inProgress = inProgress.toList(),
+        )
         val scope = CacheScope(profileId = profileId, source = source)
         if (!force && cachedPayloads[scope] == payload) {
             return@synchronized true
@@ -180,8 +186,22 @@ internal object ContinueWatchingEnrichmentCache {
         }
         runCatching {
             json.decodeFromString<CachedEnrichmentPayload>(raw)
-        }.getOrNull()?.also { payload ->
-            cachedPayloads[scope] = payload
+        }.getOrNull()?.let { payload ->
+            // Previously cached next-up episodes may have a missing or later broadcast date.
+            // Resolve them again with Simkl while retaining in-progress playback positions.
+            val migrated = if (payload.version < currentVersion) {
+                payload.copy(version = currentVersion, nextUp = emptyList())
+            } else {
+                payload
+            }
+            if (migrated !== payload) {
+                ContinueWatchingEnrichmentStorage.savePayload(
+                    continueWatchingEnrichmentStorageKey(profileId = profileId, source = source),
+                    json.encodeToString(migrated),
+                )
+            }
+            cachedPayloads[scope] = migrated
+            migrated
         } ?: run {
             cachedPayloads[scope] = null
             ContinueWatchingEnrichmentStorage.removePayload(
