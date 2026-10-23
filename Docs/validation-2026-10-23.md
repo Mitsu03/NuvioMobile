@@ -53,10 +53,10 @@ Toolchain: Xcode 27.0 (27A266a), iOS SDK 27.0, Kotlin 2.4.10, Java 17.
 
 | Check | Full | App Store |
 | --- | --- | --- |
-| Debug simulator build, arm64 | Passed | In progress |
-| Native/shared iOS tests | 1533 passed, zero failed/skipped | Pending |
-| iPhone build | Debug passed, unsigned IPA generated | Release archive pending |
-| Simulator launch | Passed: profile picker displayed on iPhone 17 Pro, iOS 26.5 | Pending |
+| Debug simulator build, arm64 | Passed | Passed |
+| Native/shared iOS tests | 1533 passed, zero failed/skipped | 1533 passed, zero failed/skipped |
+| iPhone build | Debug passed, unsigned IPA generated | Release archive and signed export passed |
+| Simulator launch | Passed: profile picker displayed on iPhone 17 Pro, iOS 26.5 | Passed: profile picker displayed on the same simulator |
 
 The Full IPA is `build/ios-ipa/nuvio-0.6.3-full-debug.ipa`. This is an unsigned
 sideload artifact, not the App Store distribution intended for TestFlight.
@@ -76,6 +76,29 @@ gh workflow run validate-mobile.yml -R Mitsu03/NuvioMobile --ref cmp-rewrite
 ```
 
 The validation workflow does not sign releases or upload builds to an app store.
-The separately requested TestFlight delivery uses the App Store distribution and
-`scripts/build-ios-appstore.sh`; its Issuer ID is still needed to authenticate the
-upload using the existing local API key.
+## TestFlight delivery
+
+The separately requested delivery uses the App Store distribution and
+`scripts/build-ios-appstore.sh`. Existing local credentials were recovered from
+the prior configuration and verified against App Store Connect, without adding
+credentials to the repository.
+
+- App Store Connect record: `Nuvi0`, app ID `6806071485`.
+- Bundle ID: `com.nuvio.media.S8KM3NMGR4`.
+- Target: version `0.6.3`, build `146`. The previous uploaded build was `125`.
+- Existing internal group `Dev` has automatic access to all builds.
+- Signed Release archive/export passed with Apple Distribution signing. The
+  exported binary passed the private CommonCrypto symbol check.
+- Apple server validation completed with `VERIFY SUCCEEDED` and no errors.
+- Upload completed with `UPLOAD SUCCEEDED` and no errors. Delivery UUID:
+  `13709431-5426-488f-b95f-df12e6c43d8b`.
+- Apple processing completed with `VALID`; internal state is `IN_BETA_TESTING`.
+- Build membership in the existing `Dev` group was verified through App Store
+  Connect. Its two existing testers have access to this build.
+- Signed IPA: `build/ios-testflight-0.6.3-146/export/Nuvio.ipa`.
+
+IPA SHA-256: `0a9648431a81339bcfc4362275a2af703398552a10066b386618ef7f49a698a6`.
+
+App Store Connect connection metadata is stored locally in
+`~/.appstoreconnect/nuvio.json` with private file permissions; the existing private
+key remains in its original location and no credentials were committed.
