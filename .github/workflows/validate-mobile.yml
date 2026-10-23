@@ -63,9 +63,19 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/ios-validation-${NUVIO_IOS_DISTRIBUTION} \
-            CODE_SIGNING_ALLOWED=NO build
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
       - name: Run shared and iOS tests
         run: ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
+      - name: Build iPhone app
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios-validation-${NUVIO_IOS_DISTRIBUTION}-device \
+            ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
       - name: Upload validation reports
         if: always()
         uses: actions/upload-artifact@v7

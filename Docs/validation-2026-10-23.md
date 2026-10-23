@@ -26,6 +26,12 @@ controls, engine switching, and media servers.
 - Added `Validate iOS` CI for full/appstore simulator builds and shared/native
   tests, using the runner's selected Xcode toolchain. Android validation is outside
   the requested scope.
+- Added unsigned iPhone builds to the iOS validation workflow and selected arm64
+  explicitly for simulator builds, matching the declared Kotlin target.
+- Removed a comma from an upstream test name, which Kotlin/Native rejects.
+- Updated the legacy progress fixture to a real 20-minute episode at 94% progress.
+  The previous one-second fixture is intentionally treated as a placeholder clip
+  by the current completion policy; the completion assertions are unchanged.
 
 ## Passed locally
 
@@ -41,16 +47,27 @@ controls, engine switching, and media servers.
   matching version, and re-download when the cached version is outdated.
 - Clean working tree after pushing; upstream ancestry confirmed.
 
-## Blocked checks
+## Native iOS validation after accepting the Xcode license
 
-Full iOS builds and test suites have **not passed** in this validation:
+Toolchain: Xcode 27.0 (27A266a), iOS SDK 27.0, Kotlin 2.4.10, Java 17.
 
-- iOS simulator build: Xcode refuses to run until its license is reviewed and
-  accepted by the machine owner (`sudo xcodebuild -license`).
+| Check | Full | App Store |
+| --- | --- | --- |
+| Debug simulator build, arm64 | Passed | In progress |
+| Native/shared iOS tests | 1533 passed, zero failed/skipped | Pending |
+| iPhone build | Debug passed, unsigned IPA generated | Release archive pending |
+| Simulator launch | Passed: profile picker displayed on iPhone 17 Pro, iOS 26.5 | Pending |
+
+The Full IPA is `build/ios-ipa/nuvio-0.6.3-full-debug.ipa`. This is an unsigned
+sideload artifact, not the App Store distribution intended for TestFlight.
+
+## Remaining external blocker
+
 - GitHub CI: dispatch returns HTTP 422, `Actions has been disabled for this
   repository`, even though repository Actions permissions report enabled and the
   validation workflow reports active. Enabling the workflow and reapplying the
   enabled repository setting did not remove the refusal; no validation run started.
+  Local iOS validation is proceeding independently.
 
 After the GitHub restriction is resolved, run:
 
@@ -58,6 +75,7 @@ After the GitHub restriction is resolved, run:
 gh workflow run validate-mobile.yml -R Mitsu03/NuvioMobile --ref cmp-rewrite
 ```
 
-Alternatively, after accepting the Xcode license, use the iOS commands in
-`.github/workflows/validate-mobile.yml` locally.
-The workflow does not sign releases or upload builds to an app store.
+The validation workflow does not sign releases or upload builds to an app store.
+The separately requested TestFlight delivery uses the App Store distribution and
+`scripts/build-ios-appstore.sh`; its Issuer ID is still needed to authenticate the
+upload using the existing local API key.
