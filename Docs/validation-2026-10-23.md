@@ -1,4 +1,4 @@
-# Mobile integration validation — 2026-10-23
+# iOS integration validation — 2026-10-23
 
 Integrated upstream `NuvioMedia/NuvioMobile` commit
 `e6c399e014939cd63dd85a3fc5d248c2bacccbe4` (0.6.3, build 146) into the fork's
@@ -9,7 +9,7 @@ The upstream commit is an ancestor of the integrated branch. Fork features were
 retained when resolving the eight conflicting files, including filler labels,
 Simkl release dates, iOS subtitle sync, playback speed restoration, and the
 immediate next-episode action. The merged player also retains upstream's party
-controls, engine switching, media servers, and Android subtitle sync.
+controls, engine switching, and media servers.
 
 ## Corrections
 
@@ -23,13 +23,14 @@ controls, engine switching, media servers, and Android subtitle sync.
   references. MPVKit remains pinned to upstream's selected commit.
 - Made the iOS engine cache check its version, so an existing 0.1.2 framework
   cannot silently satisfy a build that requires 0.1.5.
-- Added `Validate Mobile` CI for Android full/playstore tests, lint, and debug APKs,
-  plus iOS full/appstore simulator builds and shared/native tests.
+- Added `Validate iOS` CI for full/appstore simulator builds and shared/native
+  tests, using the runner's selected Xcode toolchain. Android validation is outside
+  the requested scope.
 
 ## Passed locally
 
-- `:composeApp:compileCommonMainKotlinMetadata`, with Android full and iOS appstore
-  distribution settings. This validates common code, not platform implementations.
+- `:composeApp:compileCommonMainKotlinMetadata` with iOS appstore distribution
+  settings. This validates common code, not the iOS implementation.
 - 52 isolated JVM tests for filler parsing/mapping and custom poster URLs. The
   harness compiled the real implementations, using extracted numbering/ID helpers
   and model dependencies outside the Android/iOS build. This is not the full suite.
@@ -42,10 +43,8 @@ controls, engine switching, media servers, and Android subtitle sync.
 
 ## Blocked checks
 
-Full platform builds and test suites have **not passed** in this validation:
+Full iOS builds and test suites have **not passed** in this validation:
 
-- Android tests/build: `SDK location not found`. This Mac has no configured Android
-  SDK. The project requests Android platform 37.
 - iOS simulator build: Xcode refuses to run until its license is reviewed and
   accepted by the machine owner (`sudo xcodebuild -license`).
 - GitHub CI: dispatch returns HTTP 422, `Actions has been disabled for this
@@ -59,6 +58,6 @@ After the GitHub restriction is resolved, run:
 gh workflow run validate-mobile.yml -R Mitsu03/NuvioMobile --ref cmp-rewrite
 ```
 
-Alternatively, after installing/configuring the Android SDK and accepting the
-Xcode license, use the commands in `.github/workflows/validate-mobile.yml` locally.
+Alternatively, after accepting the Xcode license, use the iOS commands in
+`.github/workflows/validate-mobile.yml` locally.
 The workflow does not sign releases or upload builds to an app store.
