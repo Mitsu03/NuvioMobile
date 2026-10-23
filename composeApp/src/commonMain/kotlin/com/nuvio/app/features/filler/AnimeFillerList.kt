@@ -30,8 +30,7 @@ internal data class AnimeFillerListEpisodes(
 internal object AnimeFillerListParser {
     private val showLinkRegex = Regex("""<a href="/shows/([^"/?#]+)"[^>]*>([^<]+)</a>""")
     private val episodeRowRegex = Regex(
-        """<tr class="([^"]*)" id="eps-(\d+)"[^>]*>(.*?)</tr>""",
-        RegexOption.DOT_MATCHES_ALL,
+        """<tr class="([^"]*)" id="eps-(\d+)"[^>]*>([\s\S]*?)</tr>""",
     )
     private val dateRegex = Regex("""<td class="Date">\s*(\d{4})-""")
     private val parentheticalRegex = Regex("""\(([^)]*)\)""")
@@ -62,7 +61,8 @@ internal object AnimeFillerListParser {
             val number = match.groupValues[2].toIntOrNull() ?: return@forEach
             if (match.groupValues[1].trim().substringBefore(' ') == "filler") fillers += number
             val year = dateRegex.find(match.groupValues[3])?.groupValues?.get(1)?.toIntOrNull()
-            if (year != null && (firstYear == null || year < firstYear!!)) firstYear = year
+            val earliestYear = firstYear
+            if (year != null && (earliestYear == null || year < earliestYear)) firstYear = year
         }
         return AnimeFillerListEpisodes(fillerEpisodes = fillers, firstAiredYear = firstYear)
     }

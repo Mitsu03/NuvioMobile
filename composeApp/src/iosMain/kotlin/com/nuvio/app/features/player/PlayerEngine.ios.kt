@@ -82,7 +82,14 @@ actual fun PlatformPlayerSurface(
     }
 
     val controller = remember(bridge) {
-        object : PlayerEngineController {
+        object : PlayerEngineController, PlayerSystemControlSource {
+            override val keepsPlaybackInBackground: Boolean
+                get() = bridge.getKeepsPlaybackInBackground()
+
+            override fun setSystemControlHandler(handler: PlayerSystemControlHandler?) {
+                bridge.setSystemControlHandler(handler)
+            }
+
             override fun play() {
                 bridge.play()
             }
@@ -378,10 +385,10 @@ actual fun PlatformPlayerSurface(
             },
             interactive = false,
         )
-        
+
         if (useNativeController) {
             var isPlayingLocal by remember { mutableStateOf(playWhenReady) }
-            
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()

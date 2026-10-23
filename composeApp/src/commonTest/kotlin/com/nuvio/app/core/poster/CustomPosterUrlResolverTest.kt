@@ -421,13 +421,29 @@ class CustomPosterUrlResolverTest {
     }
 
     @Test
-    fun resolve_pattern_without_any_placeholders_returns_as_is() {
+    fun resolve_pattern_without_any_placeholders_returns_null() {
         val ids = CustomPosterUrlResolver.extractIds("tt0137523")
         val url = CustomPosterUrlResolver.resolve(
             "https://example.com/static-poster.jpg",
             ids, "movie"
         )
-        assertEquals("https://example.com/static-poster.jpg", url)
+        assertNull(url)
+    }
+
+    @Test
+    fun resolve_decodes_url_encoded_placeholders() {
+        val ids = ContentIds(id = "tmdb:550", tmdbId = "550")
+        val url = CustomPosterUrlResolver.resolve(
+            "https://example.com/%7Bimdb_id%7Ctmdb_id%7D/%7bshape%7d.jpg",
+            ids, "movie"
+        )
+        assertEquals("https://example.com/550/poster.jpg", url)
+    }
+
+    @Test
+    fun resolve_encoded_required_placeholder_without_an_id_returns_null() {
+        val ids = ContentIds(id = "kitsu:7442", kitsuId = "7442")
+        assertNull(CustomPosterUrlResolver.resolve("https://example.com/%7Bimdb_id%7D.jpg", ids, "series"))
     }
 
     @Test

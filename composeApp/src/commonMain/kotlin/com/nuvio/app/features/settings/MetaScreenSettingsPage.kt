@@ -45,7 +45,6 @@ import nuvio.composeapp.generated.resources.random_episode_title
 import nuvio.composeapp.generated.resources.layout_random_episode_sub
 import nuvio.composeapp.generated.resources.shuffle_save_failed
 import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip

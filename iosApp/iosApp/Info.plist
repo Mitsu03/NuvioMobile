@@ -10,6 +10,7 @@
 		<string>ar</string>
 		<string>bn</string>
 		<string>bg</string>
+		<string>hr</string>
 		<string>cs</string>
 		<string>fr</string>
 		<string>de</string>
@@ -48,6 +49,13 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Nuvio connects to media servers on your local network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>infuse</string>

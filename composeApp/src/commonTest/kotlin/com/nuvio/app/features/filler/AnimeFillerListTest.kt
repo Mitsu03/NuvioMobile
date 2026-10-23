@@ -37,6 +37,21 @@ class AnimeFillerListTest {
     }
 
     @Test
+    fun episodeRowsCanSpanMultipleLines() {
+        val episodes = AnimeFillerListParser.parseEpisodes(
+            """
+            <tr class="filler odd" id="eps-33">
+              <td class="Number">33</td>
+              <td class="Date">2005-05-26</td>
+            </tr>
+            """.trimIndent(),
+        )
+
+        assertEquals(setOf(33), episodes.fillerEpisodes)
+        assertEquals(2005, episodes.firstAiredYear)
+    }
+
+    @Test
     fun showIndexSplitsAlternativeTitlesAndYears() {
         val shows = AnimeFillerListParser.parseShowIndex(showIndex).associateBy { it.slug }
 

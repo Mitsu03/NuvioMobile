@@ -3,16 +3,18 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "$0")/.." && pwd -P)"
-engine_version=0.1.2
-engine_checksum=ed35576d962930d3207b2725fa737f71ef080e35dbfa2f0bf6f21ab1719b7029
+engine_version=0.1.5
+engine_checksum=8d2a7d9b5def39bff0f5ee77a4c600bb14791b2ec388d05eeecae6424fdeab36
 engine_root="${NUVIO_ENGINE_ROOT:-${repository_root}/../nuvio-engine}"
 engine_framework="${engine_root}/platform/apple/NuvioEngine.xcframework"
+engine_version_file="${engine_framework}/.nuvio-engine-version"
 
 if [[ ! -f "${repository_root}/MPVKit/Package.swift" ]]; then
     git -C "${repository_root}" submodule update --init --depth 1 MPVKit
 fi
 
-if [[ -f "${engine_framework}/Info.plist" ]]; then
+if [[ -f "${engine_framework}/Info.plist" && -f "${engine_version_file}" ]] &&
+    [[ "$(cat "${engine_version_file}")" == "${engine_version}" ]]; then
     exit 0
 fi
 
@@ -45,3 +47,4 @@ fi
 
 mkdir -p "$(dirname "${engine_framework}")"
 ditto "${source_framework}" "${engine_framework}"
+printf '%s\n' "${engine_version}" > "${engine_version_file}"
