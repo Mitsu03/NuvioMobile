@@ -15,6 +15,7 @@ import com.nuvio.app.features.servers.ServerPlaybackTarget
 import com.nuvio.app.features.servers.ServerPlayerCapabilities
 import com.nuvio.app.features.servers.ServerSession
 import com.nuvio.app.features.servers.ServerTitleQuery
+import com.nuvio.app.isIos
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -498,8 +499,9 @@ class SiloProviderTest {
 
         val start = Json.parseToJsonElement(http.requests("/api/v2/playback/start").single().text).jsonObject
         val context = start["client_playback_context"]!!.jsonObject
+        val expectedPlatform = if (isIos) "ios" else "android"
         assertEquals("mobile", context["form_factor"]?.jsonPrimitive?.content)
-        assertEquals("android", context["device"]!!.jsonObject["platform"]?.jsonPrimitive?.content)
+        assertEquals(expectedPlatform, context["device"]!!.jsonObject["platform"]?.jsonPrimitive?.content)
     }
 
     @Test
