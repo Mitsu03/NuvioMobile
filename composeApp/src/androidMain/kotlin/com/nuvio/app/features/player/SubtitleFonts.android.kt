@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import com.nuvio.app.core.storage.replaceFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,7 +34,7 @@ internal actual object SubtitleFontStorage {
         target.parentFile?.mkdirs()
         val temporary = File(target.path + ".tmp")
         temporary.writeBytes(bytes)
-        check(temporary.renameTo(target))
+        replaceFile(temporary, target)
     }
 
     actual fun remove(name: String) { file(name).delete() }
