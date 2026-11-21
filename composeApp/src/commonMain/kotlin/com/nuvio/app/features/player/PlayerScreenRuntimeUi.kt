@@ -4,9 +4,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -14,12 +19,24 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import com.nuvio.app.features.filler.fillerTaggedTitle
 import com.nuvio.app.features.filler.isFiller
 import com.nuvio.app.features.filler.rememberFillerEpisodeKeys
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.app.core.ui.NuvioStatusModal
+import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.core.ui.LocalFold
 import com.nuvio.app.features.p2p.P2pStreamingState
 import com.nuvio.app.features.party.PartyRepository
 import com.nuvio.app.features.p2p.formatP2pMegabytes
@@ -33,7 +50,11 @@ import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
+internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
+    partyPanelWidth: Dp,
+    partyPanelInset: Dp,
+    dockPartyPanel: Boolean,
+) {
     val runtime = this
     val isInPip = rememberIsInPictureInPicture()
     val displayedPositionMs = scrubbingPositionMs ?: playbackSnapshot.positionMs
@@ -121,14 +142,37 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         }
     }
     val gestureCallbacks = rememberSurfaceGestureCallbacks()
+    val fold = LocalFold.current?.takeIf { !isInPip }
+    val videoModifier = if (fold != null) Modifier.fillMaxWidth().height(fold.top) else Modifier.fillMaxSize()
+    val panelModifier = if (fold != null) Modifier.fillMaxSize().padding(top = fold.bottom) else Modifier.fillMaxSize()
     val playbackGesturesEnabled = initialLoadCompleted && errorMessage == null
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(keyFocusRequester) {
+        keyFocusRequester.requestFocus()
+    }
 
     BindAutoSyncRuntimeEffects() // AutoSync hook
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .padding(end = partyPanelInset)
+            .clipToBounds()
             .onSizeChanged { layoutSize = it }
+            .onKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || playerControlsLocked) return@onKeyEvent false
+                when {
+                    event.key == Key.Spacebar -> togglePlayback()
+                    event.key == Key.DirectionLeft && playbackGesturesEnabled -> seekBy(-10_000L)
+                    event.key == Key.DirectionRight && playbackGesturesEnabled -> seekBy(10_000L)
+                    event.key == Key.DirectionUp -> changeVolumeBy(PlayerKeyVolumeStep)
+                    event.key == Key.DirectionDown -> changeVolumeBy(-PlayerKeyVolumeStep)
+                    else -> return@onKeyEvent false
+                }
+                true
+            }
+            .focusRequester(keyFocusRequester)
+            .focusable()
             .playerSurfaceTapGestures(
                 layoutSize = layoutSize,
                 playbackGesturesEnabled = playbackGesturesEnabled,
@@ -144,6 +188,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                 layoutSize = layoutSize,
                 playbackGesturesEnabled = playbackGesturesEnabled,
                 sideGestureSystemEdgeExclusionPx = sideGestureSystemEdgeExclusionPx,
+                horizontalSeekSystemEdgeExclusionPx = horizontalSeekSystemEdgeExclusionPx,
                 playerControlsLockedState = gestureCallbacks.playerControlsLocked,
                 touchGesturesEnabledState = gestureCallbacks.touchGesturesEnabled,
                 isHoldToSpeedGestureActiveState = gestureCallbacks.isHoldToSpeedGestureActive,
@@ -161,6 +206,24 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         val playerSurfaceSourceUrl = if (isP2pPlaybackActive) p2pResolvedSourceUrl else activeSourceUrl
         val playbackKey = activePlaybackKey
         val initialPositionRequestKey = currentInitialPositionRequestKey()
+
+        val resolvedAutoEngineState = remember(sourcePlaybackKey) {
+            mutableStateOf<AndroidPlaybackEngine?>(null)
+        }
+        if (!initialLoadCompleted || resolvedAutoEngineState.value == null) {
+            resolvedAutoEngineState.value = resolveAutoPlaybackEngine(
+                playbackEngineSetting = playerSettingsUiState.androidPlaybackEngine,
+                videoId = activeVideoId,
+                streamFilename = activeTorrentFilename ?: activeStreamFilename,
+                streamName = activeStreamTitle,
+                streamDescription = activeStreamSubtitle,
+                contentTitle = title,
+                genres = playerMeta?.genres.orEmpty(),
+                country = playerMeta?.country,
+            )
+        }
+        val resolvedAutoEngine = resolvedAutoEngineState.value
+
         if (playerSurfaceSourceUrl != null) {
             key(playbackKey) {
                 val active = remember { mutableStateOf(true) }
@@ -174,12 +237,12 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     sourceResponseHeaders = activeSourceResponseHeaders,
                     externalSubtitles = externalSubtitles,
                     streamType = activeStreamType,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = videoModifier,
                     playWhenReady = shouldPlay,
                     initialPositionMs = activeInitialPositionMs.takeIf { it > 0L },
                     initialPositionRequestKey = initialPositionRequestKey,
-                    resizeMode = resizeMode,
-                    playbackEngine = playbackEngineOverride,
+                    resizeMode = if (partyPanelInset > 0.dp) PlayerResizeMode.Fit else resizeMode,
+                    playbackEngine = playbackEngineOverride ?: resolvedAutoEngine,
                     onInitialPositionHandled = { key, handled ->
                         if (active.value && playbackKey == activePlaybackKey && key == currentInitialPositionRequestKey()) {
                             initialSeekApplied = handled
@@ -202,7 +265,15 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
                     },
                     onError = { message ->
                         if (!active.value || playbackKey != activePlaybackKey) return@PlatformPlayerSurface
-                        if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
+                        if (message != null && tryRefreshExpiredLinkAfterError(message)) {
+                            return@PlatformPlayerSurface
+                        }
+                        if (message != null && tryFallbackToNextSourceAfterError(message)) {
+                            return@PlatformPlayerSurface
+                        }
+                        // Engine failover is decided here, driven by its own player setting;
+                        // the engine's own decoder/MIME retries have already been tried.
+                        if (message != null && maybeFailoverPlaybackEngine(resolvedAutoEngine)) {
                             return@PlatformPlayerSurface
                         }
                         errorMessage = message
@@ -217,7 +288,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
         }
 
         AnimatedVisibility(
-            visible = playerSettingsUiState.pauseOverlayEnabled && pausedOverlayVisible && !controlsVisible && !playerControlsLocked,
+            visible = playerSettingsUiState.pauseOverlayEnabled && pausedOverlayVisible && !controlsVisible && !playerControlsLocked && fold == null,
             enter = fadeIn(animationSpec = tween(durationMillis = 220)),
             exit = fadeOut(animationSpec = tween(durationMillis = 180)),
         ) {
@@ -236,19 +307,34 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi() {
             )
         }
 
-        RenderPlayerControls(displayedPositionMs = displayedPositionMs, isEpisode = isEpisode)
-        RenderPlaybackOverlays(
-            runtime = runtime,
+        RenderPlayerControls(
             displayedPositionMs = displayedPositionMs,
-            currentGestureFeedback = currentGestureFeedback,
-            p2pInitialLoadingMessage = p2pInitialLoadingMessage,
-            p2pInitialLoadingProgress = p2pInitialLoadingProgress,
-            showP2pRebufferStats = showP2pRebufferStats,
-            p2pRebufferMessage = p2pRebufferMessage,
-            p2pRebufferProgress = p2pRebufferProgress,
+            isEpisode = isEpisode,
+            folded = fold != null,
+            modifier = panelModifier,
+        )
+        Box(modifier = videoModifier) {
+            RenderPlaybackOverlays(
+                runtime = runtime,
+                displayedPositionMs = displayedPositionMs,
+                currentGestureFeedback = currentGestureFeedback,
+                p2pInitialLoadingMessage = p2pInitialLoadingMessage,
+                p2pInitialLoadingProgress = p2pInitialLoadingProgress,
+                showP2pRebufferStats = showP2pRebufferStats,
+                p2pRebufferMessage = p2pRebufferMessage,
+                p2pRebufferProgress = p2pRebufferProgress,
+                folded = fold != null,
+            )
+        }
+    }
+    Box(modifier = panelModifier) {
+        RenderParty(
+            runtime = runtime,
+            panelWidth = partyPanelWidth,
+            modal = !dockPartyPanel,
+            panelVisible = showPartyPanel && !isInPip,
         )
         RenderPlayerModals(displayedPositionMs = displayedPositionMs)
-        RenderParty(runtime = runtime)
     }
 }
 
@@ -276,14 +362,26 @@ private fun PlayerScreenRuntime.currentInitialPositionRequestKey(): String? {
 }
 
 @Composable
-private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, isEpisode: Boolean) {
+private fun PlayerScreenRuntime.RenderPlayerControls(
+    displayedPositionMs: Long,
+    isEpisode: Boolean,
+    folded: Boolean,
+    modifier: Modifier,
+) {
     val isInPip = rememberIsInPictureInPicture()
     val displayedEpisodeTitle = displayedEpisodeTitle(rememberFillerEpisodeKeys(playerMeta))
     val partyState by PartyRepository.state.collectAsStateWithLifecycle()
     val partyActive = partyState.party != null
     val playerBadges = rememberPlayerBadges()
+    LaunchedEffect(folded) {
+        if (folded) {
+            controlsVisible = true
+            showParentalGuide = false
+        }
+    }
     AnimatedVisibility(
-        visible = (controlsVisible || showParentalGuide) && !playerControlsLocked && !isInPip,
+        visible = (controlsVisible || folded || showParentalGuide) && !playerControlsLocked && !isInPip &&
+            !(folded && isPanelOpen),
         enter = fadeIn(),
         exit = fadeOut(),
     ) {
@@ -348,6 +446,8 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
             },
             onSourcesClick = if (activeVideoId != null) { { openSourcesPanel() } } else null,
             onEpisodesClick = if (isSeries) { { openEpisodesPanel() } } else null,
+            chapters = chapters,
+            onChaptersClick = if (chapters.isNotEmpty()) { { openChaptersPanel() } } else null,
             onOpenInExternalPlayer = args.onOpenInExternalPlayer
                 ?.takeUnless { ServerStreams.isServerSourceId(activeProviderAddonId) }
                 ?.let { openExternal ->
@@ -417,7 +517,23 @@ private fun PlayerScreenRuntime.RenderPlayerControls(displayedPositionMs: Long, 
                 }
             },
             horizontalSafePadding = horizontalSafePadding,
-            modifier = Modifier.fillMaxSize(),
+            modifier = modifier,
+            foldLayout = folded,
+            gestureController = gestureController,
+            onWake = {
+                controlsVisible = true
+                controlsActivityTick += 1
+            },
+        )
+    }
+    AnimatedVisibility(
+        visible = folded && playerControlsLocked && !isInPip,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        FoldLockedControls(
+            onUnlock = { unlockPlayerControls() },
+            modifier = modifier,
         )
     }
 }
@@ -432,12 +548,13 @@ private fun BoxScope.RenderPlaybackOverlays(
     showP2pRebufferStats: Boolean,
     p2pRebufferMessage: String?,
     p2pRebufferProgress: Float?,
+    folded: Boolean,
 ) {
     runtime.run {
         PlayerPlaybackOverlays(
             playerControlsLocked = playerControlsLocked,
             useLegacyLayout = playerSettingsUiState.useLegacyPlayerLayout,
-            lockedOverlayVisible = lockedOverlayVisible,
+            lockedOverlayVisible = lockedOverlayVisible && !folded,
             showRemainingTime = showRemainingTime,
             playbackSnapshot = playbackSnapshot,
         displayedPositionMs = displayedPositionMs,
@@ -456,7 +573,7 @@ private fun BoxScope.RenderPlaybackOverlays(
             p2pInitialLoadingMessage ?: playerLoadingStatusMessage(
                 showStatus = true,
                 controllerReady = playerController != null,
-                buffering = playbackSnapshot.isLoading,
+                snapshot = playbackSnapshot,
             )
         } else null,
         p2pInitialLoadingProgress = p2pInitialLoadingProgress,
@@ -516,6 +633,17 @@ private fun BoxScope.RenderPlaybackOverlays(
 
 @Composable
 private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
+    PlayerChaptersPanel(
+        visible = showChaptersPanel && chapters.isNotEmpty(),
+        chapters = chapters,
+        positionMs = displayedPositionMs,
+        durationMs = playbackSnapshot.durationMs,
+        onChapterSelected = { selectChapter(it) },
+        onDismiss = {
+            showChaptersPanel = false
+            controlsVisible = true
+        },
+    )
     PlayerScreenModalHosts(
         pendingP2pSwitch = pendingP2pSwitch,
         onPendingP2pSwitchChanged = { pendingP2pSwitch = it },
@@ -543,6 +671,17 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
             }
         },
         onAudioModalDismissed = { showAudioModal = false },
+        showAudioDelay = playerController?.supportsAudioDelay == true,
+        audioDelayMs = audioDelayMs,
+        onAudioDelayChanged = { delayMs -> setAudioDelay(delayMs) },
+        showAudioAmplification = playerController?.supportsAudioAmplification == true,
+        audioAmplificationDb = audioAmplificationDb,
+        keepAudioAmplification = playerSettingsUiState.persistAudioAmplification,
+        onAudioAmplificationChanged = { db -> setAudioAmplification(db) },
+        onKeepAudioAmplificationChanged = { keep -> setKeepAudioAmplification(keep) },
+        showCenterMix = centerMixAvailable,
+        centerMixLevelDb = centerMixLevelDb,
+        onCenterMixLevelChanged = { db -> setCenterMixLevel(db) },
         showSubtitleModal = showSubtitleModal,
         subtitleTracks = serverSubtitleTracks.ifEmpty { subtitleTracks },
         selectedSubtitleIndex = if (serverSubtitleTracks.isEmpty()) {
@@ -605,8 +744,15 @@ private fun PlayerScreenRuntime.RenderPlayerModals(displayedPositionMs: Long) {
         sourceStreamsState = sourceStreamsState,
         contentTitle = title,
         activeEpisodeTitle = activeEpisodeTitle,
-        activeSourceUrl = activeSourceUrl,
-        activeStreamTitle = activeStreamTitle,
+        currentStream = PlayerCurrentStream(
+            url = activeSourceUrl,
+            name = activeStreamTitle,
+            description = activeStreamSubtitle,
+            addonId = activeProviderAddonId,
+            infoHash = activeStream?.p2pInfoHash ?: activeTorrentInfoHash,
+            fileIdx = activeStream?.p2pFileIdx ?: activeTorrentFileIdx,
+            filename = activeSourceFilename,
+        ),
         onSourceFilterSelected = PlayerStreamsRepository::selectSourceFilter,
         onSourceStreamSelected = { stream -> switchToSource(stream) },
         onReloadSources = {

@@ -73,6 +73,8 @@ import com.nuvio.app.core.ui.ScopedDisintegrationTracker
 import com.nuvio.app.core.ui.SkeletonBlock
 import com.nuvio.app.core.ui.nuvioConsumePointerEvents
 import com.nuvio.app.core.ui.shimmer
+import com.nuvio.app.core.ui.LocalVerticalBarPadding
+import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
 import com.nuvio.app.features.cloud.CloudLibraryFile
 import com.nuvio.app.features.cloud.CloudLibraryItem
 import com.nuvio.app.features.cloud.CloudLibraryItemType
@@ -162,8 +164,12 @@ fun LibraryScreen(
         selectedTypeName?.let { runCatching { CloudLibraryItemType.valueOf(it) }.getOrNull() }
     }
     var selectedCloudItemKey by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedLibrarySectionKey by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedLibraryType by rememberSaveable { mutableStateOf<String?>(null) }
+    var libraryGenre by rememberSaveable { mutableStateOf<String?>(null) }
+    var libraryYear by rememberSaveable { mutableStateOf<String?>(null) }
+    var libraryWatchedFilterName by rememberSaveable { mutableStateOf(LibraryWatchedFilter.ALL.name) }
+    val libraryWatchedFilter = remember(libraryWatchedFilterName) {
+        runCatching { LibraryWatchedFilter.valueOf(libraryWatchedFilterName) }.getOrDefault(LibraryWatchedFilter.ALL)
+    }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     ScreenActivityEffect(listState) { screenActive ->
@@ -176,7 +182,7 @@ fun LibraryScreen(
     )
     val orderListKeys = if (sourceMode != LibraryViewMode.Saved) emptyList() else {
         if (displaySettings.layoutMode == LibraryLayoutMode.HORIZONTAL) uiState.sections.map { it.type }
-        else listOfNotNull(uiState.sections.firstOrNull { it.type == selectedLibrarySectionKey }?.type
+        else listOfNotNull(uiState.sections.firstOrNull { it.type == displaySettings.selectedSectionKey }?.type
             ?: uiState.sections.firstOrNull()?.type)
     }
     val providerOrders = rememberLibraryProviderOrders(uiState.sourceMode, orderListKeys, effectiveSortOption)
@@ -196,8 +202,11 @@ fun LibraryScreen(
     val verticalProjection = remember(
         uiState.sections,
         uiState.sourceMode,
-        selectedLibrarySectionKey,
-        selectedLibraryType,
+        libraryGenre,
+        libraryYear,
+        libraryWatchedFilter,
+        watchedUiState.watchedKeys,
+        fullyWatchedSeriesKeys,
         displaySettings,
         sourceMode,
         providerOrders,
@@ -206,10 +215,20 @@ fun LibraryScreen(
             buildLibraryVerticalProjection(
                 sections = uiState.sections,
                 sourceMode = uiState.sourceMode,
-                selectedSectionKey = selectedLibrarySectionKey,
-                selectedType = selectedLibraryType,
+                selectedSectionKey = displaySettings.selectedSectionKey,
+                selectedType = displaySettings.selectedType,
                 sortOption = visibleSortOption,
                 providerOrders = providerOrders.ranks,
+                selectedGenre = libraryGenre,
+                selectedYear = libraryYear,
+                watchedFilter = libraryWatchedFilter,
+                isWatched = { item ->
+                    WatchingState.isPosterWatched(
+                        watchedKeys = watchedUiState.watchedKeys,
+                        item = item.toMetaPreview(),
+                        fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                    )
+                },
             )
         } else {
             LibraryVerticalProjection(
@@ -301,7 +320,11 @@ fun LibraryScreen(
             listState = listState,
         ) {
             stickyHeader {
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .nuvioHorizontalScrollBleed(LocalVerticalBarPadding.current),
+                ) {
                     Box(
                         modifier = Modifier
                             .matchParentSize()
@@ -309,7 +332,9 @@ fun LibraryScreen(
                             .nuvioConsumePointerEvents(),
                     )
                     androidx.compose.foundation.layout.Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(LocalVerticalBarPadding.current),
                     ) {
                         NuvioScreenHeader(
                             title = if (sourceMode != LibraryViewMode.Saved) {
@@ -486,11 +511,12 @@ fun LibraryScreen(
                                 sourceMode = uiState.sourceMode,
                                 sortOption = effectiveSortOption,
                                 verticalProjection = verticalProjection,
-                                onSectionSelected = { sectionKey ->
-                                    selectedLibrarySectionKey = sectionKey
-                                    selectedLibraryType = null
-                                },
-                                onTypeSelected = { type -> selectedLibraryType = type },
+                                watchedFilter = libraryWatchedFilter,
+                                onSectionSelected = LibraryDisplaySettingsRepository::setSelectedSection,
+                                onTypeSelected = LibraryDisplaySettingsRepository::setSelectedType,
+                                onGenreSelected = { genre -> libraryGenre = genre },
+                                onYearSelected = { year -> libraryYear = year },
+                                onWatchedFilterSelected = { filter -> libraryWatchedFilterName = filter.name },
                                 onSortSelected = LibraryDisplaySettingsRepository::setSortOption,
                                 modifier = libraryContentTransitionModifier()
                                     .padding(horizontal = 16.dp),

@@ -1,6 +1,7 @@
 package com.nuvio.app.features.downloads
 
 import android.util.AtomicFile
+import com.nuvio.app.core.storage.finishWriteChecked
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
@@ -60,7 +61,7 @@ internal class AndroidDownloadStore(private val directory: File) {
         val output = file.startWrite()
         try {
             output.write(json.encodeToString(transfer).toByteArray())
-            file.finishWrite(output)
+            file.finishWriteChecked(output)
         } catch (error: Throwable) {
             file.failWrite(output)
             throw error

@@ -190,8 +190,14 @@ class DownloadSubtitlesTest {
             )
         }
         val forwarded = assertNotNull(request.subtitles).single()
-        assertTrue(forwarded.url.startsWith("content://"))
-        assertEquals(srt, File(context.cacheDir, "subtitles/en_English.srt").readText())
+        if (File.separatorChar == '\\') {
+            // FileProvider's Android path check uses '/' and cannot match Windows canonical paths.
+            assertEquals(permanentTrack.url, forwarded.url)
+            assertTrue(File(context.cacheDir, "subtitles").listFiles().orEmpty().isEmpty())
+        } else {
+            assertTrue(forwarded.url.startsWith("content://"))
+            assertEquals(srt, File(context.cacheDir, "subtitles/en_English.srt").readText())
+        }
         SubtitleFileCache.clearCache()
         assertEquals(srt, File(URI(permanentTrack.url)).readText())
     }
